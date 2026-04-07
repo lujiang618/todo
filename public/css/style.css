@@ -83,12 +83,47 @@ section {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-section h2 {
-  font-size: 1.2rem;
-  color: #2c3e50;
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 15px;
   padding-bottom: 10px;
   border-bottom: 2px solid #ecf0f1;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #2c3e50;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-sm:hover {
+  background: #f5f5f5;
+}
+
+.btn-collapse-toggle {
+  padding: 4px 8px;
+  font-size: 12px;
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .add-todo-form,
@@ -201,6 +236,16 @@ mark {
   background: #d4edff;
 }
 
+/* 分类收起状态 */
+.category-container.collapsed .todo-list {
+  display: none;
+}
+
+.category-container.collapsed .category-header {
+  border-bottom: none;
+  border-radius: 8px;
+}
+
 .category-header {
   display: flex;
   justify-content: space-between;
@@ -210,10 +255,20 @@ mark {
   border-bottom: 1px solid #e0e0e0;
   border-radius: 8px 8px 0 0;
   cursor: grab;
+  user-select: none;
 }
 
 .category-header:active {
   cursor: grabbing;
+}
+
+/* 确保分类头部内的按钮不影响拖拽 */
+.category-header .btn-edit-category,
+.category-header .btn-add-todo,
+.category-header .btn-archive-category,
+.category-header .btn-delete-category {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .category-header-left {

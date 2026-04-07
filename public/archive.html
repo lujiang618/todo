@@ -43,9 +43,8 @@
     // 初始化年月选择器
     function initSelectors() {
       const now = new Date();
-      // 默认显示上个月
-      let year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      let month = now.getMonth() === 0 ? 12 : now.getMonth();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1; // 当前月份
 
       // 年份选择：过去 5 年到当前年
       for (let y = year - 5; y <= year + 1; y++) {
@@ -110,50 +109,46 @@
           return;
         }
 
-        const todos = data.data.data?.todos || data.data.todos || [];
+        const archiveData = data.data.data || data.data;
+
+        // 如果 data 是字符串，需要解析
+        const parsedData = typeof archiveData === 'string' ? JSON.parse(archiveData) : archiveData;
+        const todos = parsedData?.todos || [];
+        const categoryName = archiveData?.category_name || '';
 
         if (todos.length === 0) {
           archiveList.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
           return;
         }
 
-        // 按日期分组显示
-        const byDate = {};
-        todos.forEach(todo => {
-          if (!byDate[todo.date]) byDate[todo.date] = [];
-          byDate[todo.date].push(todo);
-        });
-
+        // 按分类名称显示
         archiveList.innerHTML = '';
-        const sortedDates = Object.keys(byDate).sort();
 
-        sortedDates.forEach(date => {
-          const dateEl = document.createElement('div');
-          dateEl.className = 'archive-date-group';
+        const dateEl = document.createElement('div');
+        dateEl.className = 'archive-date-group';
 
-          const dateHeader = document.createElement('div');
-          dateHeader.className = 'archive-date-header';
-          dateHeader.innerHTML = `<strong>${date}</strong> <span>(${byDate[date].length}条)</span>`;
-          dateEl.appendChild(dateHeader);
+        const dateHeader = document.createElement('div');
+        dateHeader.className = 'archive-date-header';
+        dateHeader.innerHTML = `<strong>${categoryName}</strong> <span>(${todos.length}条)</span>`;
+        dateEl.appendChild(dateHeader);
 
-          const childrenList = document.createElement('div');
-          childrenList.className = 'children-list';
+        const childrenList = document.createElement('div');
+        childrenList.className = 'children-list';
 
-          byDate[date].forEach(todo => {
-            const todoEl = document.createElement('div');
-            todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-            todoEl.innerHTML = `
-              <div class="todo-row">
-                <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
-                <span class="todo-title">${todo.title}</span>
-              </div>
-            `;
-            childrenList.appendChild(todoEl);
-          });
-
-          dateEl.appendChild(childrenList);
-          archiveList.appendChild(dateEl);
+        todos.forEach(todo => {
+          const todoEl = document.createElement('div');
+          todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+          todoEl.innerHTML = `
+            <div class="todo-row">
+              <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
+              <span class="todo-title">${todo.title}</span>
+            </div>
+          `;
+          childrenList.appendChild(todoEl);
         });
+
+        dateEl.appendChild(childrenList);
+        archiveList.appendChild(dateEl);
 
       } catch (error) {
         archiveList.innerHTML = '<div class="empty-state">加载失败：' + error.message + '</div>';
@@ -170,7 +165,7 @@
     // 初始化
     initSelectors();
 
-    // 默认加载上个月的归档数据
+    // 默认加载当前月份的归档数据
     loadArchive(yearSelect.value, monthSelect.value);
 
     // 如果 URL 包含年月，直接加载

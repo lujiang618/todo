@@ -8,6 +8,40 @@ let searchQuery = '';       // 搜索关键词
 // 默认分类 ID（Pool）
 const DEFAULT_CATEGORY_ID = 1;
 
+// ==================== 展开/收起状态管理 ====================
+// 从 localStorage 获取收起的分类 ID 列表
+function getCollapsedCategories() {
+  const stored = localStorage.getItem('collapsedCategories');
+  return stored ? JSON.parse(stored) : [];
+}
+
+// 保存收起状态到 localStorage
+function saveCollapsedCategories(collapsedIds) {
+  localStorage.setItem('collapsedCategories', JSON.stringify(collapsedIds));
+}
+
+// 检查分类是否收起
+function isCollapsed(categoryId) {
+  const collapsed = getCollapsedCategories();
+  return collapsed.includes(categoryId);
+}
+
+// 切换分类展开/收起状态
+function toggleCategoryCollapse(categoryId) {
+  const collapsed = getCollapsedCategories();
+  const index = collapsed.indexOf(categoryId);
+
+  if (index > -1) {
+    // 已收起，展开它（从数组中移除）
+    collapsed.splice(index, 1);
+  } else {
+    // 已展开，收起它（添加到数组）
+    collapsed.push(categoryId);
+  }
+
+  saveCollapsedCategories(collapsed);
+}
+
 // ==================== API 请求封装 ====================
 const api = {
   // 获取所有分类
@@ -165,6 +199,9 @@ function renderCategoryList(container, searchTerm = '') {
 function createCategoryElement(category, searchTerm = '') {
   const div = document.createElement('div');
   div.className = 'category-container';
+  if (isCollapsed(category.id)) {
+    div.classList.add('collapsed');
+  }
   div.dataset.categoryId = category.id;
   div.dataset.categoryName = category.name;
 
@@ -181,6 +218,7 @@ function createCategoryElement(category, searchTerm = '') {
 
   header.innerHTML = `
     <div class="category-header-left">
+      <button class="btn-sm btn-collapse-toggle" title="${isCollapsed(category.id) ? '展开' : '收起'}">${isCollapsed(category.id) ? '▶' : '▼'}</button>
       ${dateBadge}
       <span class="category-name">${highlightMatch(category.name, searchTerm)}</span>
     </div>
@@ -191,6 +229,19 @@ function createCategoryElement(category, searchTerm = '') {
       <button class="btn-delete-category" title="删除分类">🗑️</button>
     </div>
   `;
+
+  // 展开/收起切换按钮
+  header.querySelector('.btn-collapse-toggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCategoryCollapse(category.id);
+    loadAllData();
+  });
+
+  // 阻止按钮的拖动事件干扰拖拽
+  header.querySelector('.btn-collapse-toggle').addEventListener('dragstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
 
   // 编辑分类按钮
   header.querySelector('.btn-edit-category').addEventListener('click', () => {
@@ -205,13 +256,58 @@ function createCategoryElement(category, searchTerm = '') {
   // 归档分类按钮（仅日期类型分类显示）
   const archiveBtn = header.querySelector('.btn-archive-category');
   if (archiveBtn && category.is_date) {
-    archiveBtn.addEventListener('click', async () => {
+    archiveBtn.addEventListener('click', () => {
       const todosInCategory = categoryTodos[category.id] || [];
       const count = todosInCategory.length;
-      if (confirm(`确定要归档分类 "${category.name}" 吗？${count > 0 ? `该分类下的 ${count} 个条目将被保存到归档历史记录中并删除。` : ''}`)) {
+      const message = count > 0
+        ? `该分类下的 ${count} 个条目将被保存到归档历史记录中并删除。`
+        : '归档后该分类将被删除。';
+
+      const modal = document.getElementById('modal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalBody = document.querySelector('.modal-body');
+      const modalInput = document.getElementById('modalInput');
+      const btnClose = document.getElementById('btnClose');
+      const btnCancel = document.getElementById('btnCancel');
+      const btnConfirm = document.getElementById('btnConfirm');
+
+      modalTitle.textContent = '归档确认';
+      modalInput.value = '';
+      modalInput.placeholder = `确定要归档分类 "${category.name}" 吗？\n${message}`;
+      modalInput.readOnly = true;
+      modalInput.style.border = 'none';
+      modalInput.style.fontSize = '14px';
+      modalInput.style.padding = '15px';
+      modalInput.style.height = '100px';
+      modalInput.style.resize = 'none';
+      modalInput.style.background = '#f9f9f9';
+      btnConfirm.textContent = '确认归档';
+
+      modal.classList.add('show');
+
+      const closeModal = () => {
+        modal.classList.remove('show');
+        modalInput.readOnly = false;
+        modalInput.style.border = '1px solid #ddd';
+        modalInput.style.fontSize = '14px';
+        modalInput.style.padding = '10px';
+        modalInput.style.height = '';
+        modalInput.style.resize = '';
+        modalInput.style.background = '';
+        btnConfirm.textContent = '确定';
+      };
+
+      btnClose.onclick = closeModal;
+      btnCancel.onclick = closeModal;
+      btnConfirm.onclick = async () => {
         await api.archiveCategory(category.id);
         loadAllData();
-      }
+        closeModal();
+      };
+
+      modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+      };
     });
   }
 
@@ -443,17 +539,28 @@ function setupTodoDragAndDrop(itemEl, todo) {
 function setupTodoListDropTarget(containerEl, categoryId) {
   containerEl.addEventListener('dragover', (e) => {
     e.preventDefault();
-    e.stopPropagation();
+    // 只在拖动 TODO 条目时阻止冒泡（组内排序）
+    // 如果拖动的是分类，让事件继续冒泡到父元素
+    if (draggedItem && draggedItem.type === 'todo') {
+      e.stopPropagation();
+    }
   });
 
   containerEl.addEventListener('drop', async (e) => {
     e.preventDefault();
-    e.stopPropagation();
 
+    // 只在拖动 TODO 条目且来自同一个分类时处理组内排序
     if (draggedItem && draggedItem.type === 'todo') {
+      const sourceCategoryId = draggedItem.todo.category_id;
+
+      // 如果是跨分类拖动，让事件冒泡到分类容器处理
+      if (sourceCategoryId !== categoryId) {
+        return;
+      }
+
+      e.stopPropagation();
+
       const draggedEl = draggedItem.item;
-      // 只选择直接子元素的 TODO 条目（排除子条目）
-      const siblings = [...containerEl.querySelectorAll(':scope > .todo-item:not(.dragging)')];
       const afterElement = getDragAfterElement(containerEl, e.clientY);
 
       // 获取新顺序
@@ -475,6 +582,7 @@ function setupTodoListDropTarget(containerEl, categoryId) {
       await api.reorderTodos(items);
       loadAllData();
     }
+    // 如果是跨分类拖动或分类拖动，让事件冒泡到父元素（分类容器）处理
   });
 }
 
@@ -504,18 +612,29 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
     e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'category', id: category.id }));
   });
 
-  containerEl.addEventListener('dragend', () => {
+  headerEl.addEventListener('dragend', () => {
     containerEl.classList.remove('dragging');
     draggedItem = null;
     document.querySelectorAll('.category-container, .todo-pool, .todo-list').forEach(el => {
       el.classList.remove('drag-over');
+      el.style.borderTop = '';
+      el.style.borderBottom = '';
+    });
+  });
+
+  // 阻止按钮点击事件干扰拖拽
+  const buttons = headerEl.querySelectorAll('button');
+  buttons.forEach(btn => {
+    btn.addEventListener('dragstart', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
     });
   });
 
   // 接收 TODO 条目拖放
   containerEl.addEventListener('dragenter', (e) => {
     e.preventDefault();
-    if (draggedItem && draggedItem.type !== 'category') {
+    if (draggedItem && draggedItem.type === 'category') {
       containerEl.classList.add('drag-over');
     }
   });
@@ -534,8 +653,6 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
         containerEl.style.borderBottom = '';
       }
       e.dataTransfer.dropEffect = 'move';
-    } else if (draggedItem && draggedItem.type !== 'category') {
-      e.dataTransfer.dropEffect = 'move';
     }
   });
 
@@ -549,6 +666,7 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
 
   containerEl.addEventListener('drop', async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     containerEl.classList.remove('drag-over');
     containerEl.style.borderTop = '';
     containerEl.style.borderBottom = '';
@@ -878,12 +996,29 @@ async function loadAllData() {
   renderCategoryList(todoList, searchQuery);
 }
 
+// ==================== 展开/收起全部 ====================
+function expandAll() {
+  saveCollapsedCategories([]);
+  loadAllData();
+}
+
+function collapseAll() {
+  // 过滤掉 Pool 分类，收起所有其他分类
+  const allCollapsed = allCategories
+    .filter(c => c.id !== DEFAULT_CATEGORY_ID)
+    .map(c => c.id);
+  saveCollapsedCategories(allCollapsed);
+  loadAllData();
+}
+
 // ==================== 初始化 ====================
 document.addEventListener('DOMContentLoaded', () => {
   const addPoolTodoBtn = document.getElementById('addPoolTodo');
   const poolTitle = document.getElementById('poolTitle');
   const addDateBtn = document.getElementById('addDateBtn');
   const searchCategoryInput = document.getElementById('searchCategoryInput');
+  const expandAllBtn = document.getElementById('expandAllBtn');
+  const collapseAllBtn = document.getElementById('collapseAllBtn');
 
   poolTitle.value = '';
   searchCategoryInput.value = '';
@@ -912,6 +1047,12 @@ document.addEventListener('DOMContentLoaded', () => {
     searchQuery = e.target.value.trim();
     loadAllData();
   });
+
+  // 全部展开
+  expandAllBtn.addEventListener('click', expandAll);
+
+  // 全部收起
+  collapseAllBtn.addEventListener('click', collapseAll);
 
   // 初始加载
   loadAllData();

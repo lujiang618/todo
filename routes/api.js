@@ -169,7 +169,12 @@ router.get('/archives/:year/:month', (req, res) => {
     if (!archive) {
       return res.status(404).json({ success: false, error: 'Archive not found' });
     }
-    res.json({ success: true, data: archive });
+    // 解析 data 字段（JSON 字符串）
+    const archiveData = {
+      ...archive,
+      data: typeof archive.data === 'string' ? JSON.parse(archive.data) : archive.data
+    };
+    res.json({ success: true, data: archiveData });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

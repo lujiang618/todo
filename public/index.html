@@ -15,7 +15,13 @@
 
     <!-- 待办列表 -->
     <section class="todo-section">
-      <h2>待办列表</h2>
+      <div class="section-header">
+        <h2>待办列表</h2>
+        <div class="section-actions">
+          <button id="expandAllBtn" class="btn btn-sm">全部展开</button>
+          <button id="collapseAllBtn" class="btn btn-sm">全部收起</button>
+        </div>
+      </div>
       <div class="add-date-form">
         <input type="text" id="searchCategoryInput" class="input-field input-search" placeholder="搜索分类...">
         <button id="addDateBtn" class="btn btn-primary">添加分类</button>
