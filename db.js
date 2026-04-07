@@ -16,15 +16,29 @@ db.pragma('foreign_keys = ON');
 
 // 初始化数据库表
 function initDatabase() {
-  // 创建 categories 表
+  // 创建 categories 表（添加新字段）
   db.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
+      is_date BOOLEAN DEFAULT FALSE,
+      archived BOOLEAN DEFAULT FALSE,
       sort_order INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 为现有数据库添加新字段（如果不存在）
+  try {
+    db.exec('ALTER TABLE categories ADD COLUMN is_date BOOLEAN DEFAULT FALSE');
+  } catch (e) {
+    // 列已存在，忽略
+  }
+  try {
+    db.exec('ALTER TABLE categories ADD COLUMN archived BOOLEAN DEFAULT FALSE');
+  } catch (e) {
+    // 列已存在，忽略
+  }
 
   // 插入默认分类 Pool（如果不存在）
   db.exec(`
@@ -144,6 +158,16 @@ const todoDao = {
       UPDATE todos SET ${fields.join(', ')} WHERE id = ?
     `);
     stmt.run(...values);
+
+    // 如果更新了 category_id，级联更新所有子条目的 category_id
+    if (updates.category_id !== undefined) {
+      const updateChildren = db.prepare(`
+        UPDATE todos SET category_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE parent_id = ?
+      `);
+      updateChildren.run(updates.category_id, id);
+    }
+
     return this.getById(id);
   },
 
@@ -210,16 +234,21 @@ const todoDao = {
 
   // ==================== 分类相关方法 ====================
 
-  // 获取所有分类
-  getAllCategories() {
-    const stmt = db.prepare('SELECT * FROM categories ORDER BY sort_order, name');
+  // 获取所有分类（排除已归档的，除非指定 includeArchived）
+  getAllCategories(includeArchived = false) {
+    let sql = 'SELECT * FROM categories WHERE 1=1';
+    if (!includeArchived) {
+      sql += ' AND (archived = 0 OR archived IS NULL)';
+    }
+    sql += ' ORDER BY sort_order, name';
+    const stmt = db.prepare(sql);
     return stmt.all();
   },
 
   // 创建分类
-  createCategory(name, sort_order = 0) {
-    const stmt = db.prepare('INSERT INTO categories (name, sort_order) VALUES (?, ?)');
-    const result = stmt.run(name, sort_order);
+  createCategory(name, sort_order = 0, is_date = false) {
+    const stmt = db.prepare('INSERT INTO categories (name, sort_order, is_date) VALUES (?, ?, ?)');
+    const result = stmt.run(name, sort_order, is_date ? 1 : 0);
     return this.getCategoryById(result.lastInsertRowid);
   },
 
@@ -231,14 +260,19 @@ const todoDao = {
 
   // 更新分类
   updateCategory(id, updates) {
-    const allowedFields = ['name', 'sort_order'];
+    const allowedFields = ['name', 'sort_order', 'is_date', 'archived'];
     const fields = [];
     const values = [];
 
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
         fields.push(`${key} = ?`);
-        values.push(value);
+        // 布尔值转换为 0/1
+        if (key === 'is_date' || key === 'archived') {
+          values.push(value ? 1 : 0);
+        } else {
+          values.push(value);
+        }
       }
     }
 
@@ -250,10 +284,50 @@ const todoDao = {
     return this.getCategoryById(id);
   },
 
+  // 归档分类（将分类下的所有 TODO 归档到 archives 表）
+  archiveCategory(id) {
+    const category = this.getCategoryById(id);
+    if (!category) return false;
+
+    // 获取该分类下的所有 TODO
+    const todos = this.getByCategory(id);
+
+    if (todos.length > 0) {
+      // 保存到 archives 表
+      const archiveData = {
+        category_name: category.name,
+        todos: todos
+      };
+      this.archive(new Date().getFullYear().toString(), String(new Date().getMonth() + 1).padStart(2, '0'), archiveData);
+    }
+
+    // 删除该分类下的所有 TODO
+    const deleteTodos = db.prepare('DELETE FROM todos WHERE category_id = ?');
+    deleteTodos.run(id);
+
+    // 标记分类为已归档
+    const updateCategory = db.prepare('UPDATE categories SET archived = 1 WHERE id = ?');
+    updateCategory.run(id);
+
+    return true;
+  },
+
   // 删除分类
   deleteCategory(id) {
     const stmt = db.prepare('DELETE FROM categories WHERE id = ?');
     return stmt.run(id);
+  },
+
+  // 批量更新分类顺序
+  reorderCategories(order) {
+    const stmt = db.prepare('UPDATE categories SET sort_order = ? WHERE id = ?');
+    const updateMany = db.transaction((order) => {
+      for (let i = 0; i < order.length; i++) {
+        stmt.run(i, order[i]);
+      }
+    });
+    updateMany(order);
+    return true;
   },
 };
 

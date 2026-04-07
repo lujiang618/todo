@@ -3,49 +3,117 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>归档查看 - TODO List</title>
+  <title>历史记录 - TODO</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>归档查看</h1>
+      <h1>历史记录</h1>
       <a href="/" class="btn btn-secondary">返回首页</a>
     </header>
 
-    <section>
-      <h2 id="archiveTitle">加载中...</h2>
+    <!-- 年月选择器 -->
+    <section class="archive-selector">
+      <div class="month-picker">
+        <button id="prevMonth" class="btn btn-icon">‹</button>
+        <select id="yearSelect"></select>
+        <select id="monthSelect"></select>
+        <button id="nextMonth" class="btn btn-icon">›</button>
+      </div>
+      <button id="loadArchive" class="btn btn-primary">查看</button>
+    </section>
+
+    <!-- 归档数据展示 -->
+    <section class="archive-section">
+      <h2 id="archiveTitle">请选择年月</h2>
       <div id="archiveList" class="todo-list"></div>
     </section>
   </div>
 
   <script>
-    async function loadArchive() {
-      const pathParts = window.location.pathname.split('/');
-      const year = pathParts[2];
-      const month = pathParts[3];
+    const yearSelect = document.getElementById('yearSelect');
+    const monthSelect = document.getElementById('monthSelect');
+    const loadArchiveBtn = document.getElementById('loadArchive');
+    const prevMonthBtn = document.getElementById('prevMonth');
+    const nextMonthBtn = document.getElementById('nextMonth');
+    const archiveTitle = document.getElementById('archiveTitle');
+    const archiveList = document.getElementById('archiveList');
 
-      if (!year || !month) {
-        document.getElementById('archiveTitle').textContent = '无效的归档路径';
-        return;
+    // 初始化年月选择器
+    function initSelectors() {
+      const now = new Date();
+      // 默认显示上个月
+      let year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      let month = now.getMonth() === 0 ? 12 : now.getMonth();
+
+      // 年份选择：过去 5 年到当前年
+      for (let y = year - 5; y <= year + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + '年';
+        yearSelect.appendChild(opt);
+      }
+      yearSelect.value = year;
+
+      // 月份选择
+      for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement('option');
+        opt.value = String(m).padStart(2, '0');
+        opt.textContent = String(m).padStart(2, '0') + '月';
+        monthSelect.appendChild(opt);
+      }
+      monthSelect.value = String(month).padStart(2, '0');
+    }
+
+    // 获取上月
+    function prevMonth() {
+      let year = parseInt(yearSelect.value);
+      let month = parseInt(monthSelect.value);
+
+      month--;
+      if (month < 1) {
+        month = 12;
+        year--;
       }
 
-      document.getElementById('archiveTitle').textContent = `${year}年${parseInt(month)}月`;
+      yearSelect.value = year;
+      monthSelect.value = String(month).padStart(2, '0');
+    }
+
+    // 获取下月
+    function nextMonth() {
+      let year = parseInt(yearSelect.value);
+      let month = parseInt(monthSelect.value);
+
+      month++;
+      if (month > 12) {
+        month = 1;
+        year++;
+      }
+
+      yearSelect.value = year;
+      monthSelect.value = String(month).padStart(2, '0');
+    }
+
+    // 加载归档数据
+    async function loadArchive(year, month) {
+      archiveTitle.textContent = `${year}年${parseInt(month)}月`;
+      archiveList.innerHTML = '<div class="loading">加载中...</div>';
 
       try {
         const res = await fetch(`/api/archives/${year}/${month}`);
         const data = await res.json();
 
-        if (!data.success) {
-          document.getElementById('archiveList').innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
+        if (!data.success || !data.data) {
+          archiveList.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
           return;
         }
 
-        const todos = data.data.data?.todos || [];
-        const container = document.getElementById('archiveList');
+        const todos = data.data.data?.todos || data.data.todos || [];
 
         if (todos.length === 0) {
-          container.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
+          archiveList.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
           return;
         }
 
@@ -56,44 +124,64 @@
           byDate[todo.date].push(todo);
         });
 
-        Object.keys(byDate).sort().forEach(date => {
+        archiveList.innerHTML = '';
+        const sortedDates = Object.keys(byDate).sort();
+
+        sortedDates.forEach(date => {
           const dateEl = document.createElement('div');
-          dateEl.className = 'todo-item';
-          dateEl.innerHTML = `
-            <div class="todo-content">
-              <strong class="todo-title">${date}</strong>
-              <span class="todo-desc">${byDate[date].length} 条待办</span>
-            </div>
-          `;
+          dateEl.className = 'archive-date-group';
+
+          const dateHeader = document.createElement('div');
+          dateHeader.className = 'archive-date-header';
+          dateHeader.innerHTML = `<strong>${date}</strong> <span>(${byDate[date].length}条)</span>`;
+          dateEl.appendChild(dateHeader);
 
           const childrenList = document.createElement('div');
           childrenList.className = 'children-list';
-          childrenList.style.display = 'block';
 
           byDate[date].forEach(todo => {
-            const childEl = document.createElement('div');
-            childEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-            childEl.innerHTML = `
-              <div class="todo-content">
+            const todoEl = document.createElement('div');
+            todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+            todoEl.innerHTML = `
+              <div class="todo-row">
                 <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
                 <span class="todo-title">${todo.title}</span>
-                ${todo.description ? `<span class="todo-desc">${todo.description}</span>` : ''}
               </div>
             `;
-            childEl.style.marginLeft = '20px';
-            childrenList.appendChild(childEl);
+            childrenList.appendChild(todoEl);
           });
 
           dateEl.appendChild(childrenList);
-          container.appendChild(dateEl);
+          archiveList.appendChild(dateEl);
         });
 
       } catch (error) {
-        document.getElementById('archiveList').innerHTML = '<div class="empty-state">加载失败：' + error.message + '</div>';
+        archiveList.innerHTML = '<div class="empty-state">加载失败：' + error.message + '</div>';
       }
     }
 
-    document.addEventListener('DOMContentLoaded', loadArchive);
+    // 事件绑定
+    prevMonthBtn.addEventListener('click', prevMonth);
+    nextMonthBtn.addEventListener('click', nextMonth);
+    loadArchiveBtn.addEventListener('click', () => {
+      loadArchive(yearSelect.value, monthSelect.value);
+    });
+
+    // 初始化
+    initSelectors();
+
+    // 默认加载上个月的归档数据
+    loadArchive(yearSelect.value, monthSelect.value);
+
+    // 如果 URL 包含年月，直接加载
+    const pathParts = window.location.pathname.split('/');
+    const year = pathParts[2];
+    const month = pathParts[3];
+    if (year && month) {
+      yearSelect.value = year;
+      monthSelect.value = month;
+      loadArchive(year, month);
+    }
   </script>
 </body>
 </html>

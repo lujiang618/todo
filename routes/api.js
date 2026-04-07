@@ -18,16 +18,44 @@ router.get('/categories', (req, res) => {
 // 创建分类
 router.post('/categories', (req, res) => {
   try {
-    const { name, sort_order } = req.body;
+    const { name, sort_order, is_date } = req.body;
     if (!name) {
       return res.status(400).json({ success: false, error: 'Name is required' });
     }
-    const category = todoDao.createCategory(name, sort_order);
+    const category = todoDao.createCategory(name, sort_order, is_date);
     res.status(201).json({ success: true, data: category });
   } catch (error) {
     if (error.message.includes('UNIQUE constraint failed')) {
       return res.status(400).json({ success: false, error: 'Category name already exists' });
     }
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 归档分类
+router.post('/categories/:id/archive', (req, res) => {
+  try {
+    const result = todoDao.archiveCategory(req.params.id);
+    if (result) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ success: false, error: 'Category not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 更新分类顺序（必须在 /categories/:id 之前定义）
+router.put('/categories/reorder', (req, res) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ success: false, error: 'Order must be an array' });
+    }
+    todoDao.reorderCategories(order);
+    res.json({ success: true });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -96,6 +124,20 @@ router.post('/todos', (req, res) => {
   }
 });
 
+// 批量更新排序（必须在 /todos/:id 之前定义）
+router.put('/todos/reorder', (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ success: false, error: 'Items must be an array' });
+    }
+    todoDao.updateOrder(items);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 更新 TODO
 router.put('/todos/:id', (req, res) => {
   try {
@@ -113,20 +155,6 @@ router.put('/todos/:id', (req, res) => {
 router.delete('/todos/:id', (req, res) => {
   try {
     todoDao.delete(req.params.id);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 批量更新排序
-router.put('/todos/reorder', (req, res) => {
-  try {
-    const { items } = req.body;
-    if (!Array.isArray(items)) {
-      return res.status(400).json({ success: false, error: 'Items must be an array' });
-    }
-    todoDao.updateOrder(items);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

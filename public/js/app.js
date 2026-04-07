@@ -18,14 +18,23 @@ const api = {
   },
 
   // 创建分类
-  async createCategory(name) {
+  async createCategory(name, is_date = false) {
     const res = await fetch('/api/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, is_date })
     });
     const data = await res.json();
     return data.success ? data.data : null;
+  },
+
+  // 归档分类
+  async archiveCategory(id) {
+    const res = await fetch(`/api/categories/${id}/archive`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    return data.success;
   },
 
   // 更新分类
@@ -42,6 +51,28 @@ const api = {
   // 删除分类
   async deleteCategory(id) {
     const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    return data.success;
+  },
+
+  // 更新分类顺序
+  async reorderCategories(order) {
+    const res = await fetch('/api/categories/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order })
+    });
+    const data = await res.json();
+    return data.success;
+  },
+
+  // 批量更新 TODO 顺序
+  async reorderTodos(items) {
+    const res = await fetch('/api/todos/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
     const data = await res.json();
     return data.success;
   },
@@ -139,24 +170,50 @@ function createCategoryElement(category, searchTerm = '') {
 
   const header = document.createElement('div');
   header.className = 'category-header';
+
+  // 日期类型标识
+  const dateBadge = category.is_date ? '<span class="date-badge" title="日期类型">📅</span>' : '';
+
+  // 归档按钮（仅日期类型分类显示）
+  const archiveButton = category.is_date
+    ? '<button class="btn-archive-category" title="归档分类">📦</button>'
+    : '';
+
   header.innerHTML = `
-    <span class="category-name">${highlightMatch(category.name, searchTerm)}</span>
+    <div class="category-header-left">
+      ${dateBadge}
+      <span class="category-name">${highlightMatch(category.name, searchTerm)}</span>
+    </div>
     <div class="category-actions">
       <button class="btn-edit-category" title="编辑分类">✏️</button>
       <button class="btn-add-todo" title="添加待办">➕</button>
+      ${archiveButton}
       <button class="btn-delete-category" title="删除分类">🗑️</button>
     </div>
   `;
 
   // 编辑分类按钮
   header.querySelector('.btn-edit-category').addEventListener('click', () => {
-    showEditCategoryForm(category.id, category.name);
+    showEditCategoryForm(category.id, category.name, category.is_date);
   });
 
   // 添加待办按钮
   header.querySelector('.btn-add-todo').addEventListener('click', () => {
     showAddTodoToCategory(category.id, category.name);
   });
+
+  // 归档分类按钮（仅日期类型分类显示）
+  const archiveBtn = header.querySelector('.btn-archive-category');
+  if (archiveBtn && category.is_date) {
+    archiveBtn.addEventListener('click', async () => {
+      const todosInCategory = categoryTodos[category.id] || [];
+      const count = todosInCategory.length;
+      if (confirm(`确定要归档分类 "${category.name}" 吗？${count > 0 ? `该分类下的 ${count} 个条目将被保存到归档历史记录中并删除。` : ''}`)) {
+        await api.archiveCategory(category.id);
+        loadAllData();
+      }
+    });
+  }
 
   // 删除分类按钮
   header.querySelector('.btn-delete-category').addEventListener('click', async () => {
@@ -197,8 +254,10 @@ function createCategoryElement(category, searchTerm = '') {
     todoList.appendChild(itemEl);
   });
 
-  // 设置拖拽接收
-  setupCategoryDropTarget(div, category);
+  // 设置分类容器拖拽接收
+  setupCategoryDropTarget(div, category, header);
+  // 设置 TODO 列表组内拖拽排序
+  setupTodoListDropTarget(todoList, category.id);
 
   div.appendChild(header);
   div.appendChild(todoList);
@@ -239,6 +298,8 @@ function renderPoolList(container) {
 
   // 设置 POOL 为拖拽目标
   setupPoolDropTarget(container);
+  // 设置 POOL 列表组内拖拽排序
+  setupTodoListDropTarget(container, DEFAULT_CATEGORY_ID);
 }
 
 // 创建 TODO 元素
@@ -363,46 +424,165 @@ function createChildElement(todo) {
 function setupTodoDragAndDrop(itemEl, todo) {
   itemEl.setAttribute('draggable', true);
   itemEl.addEventListener('dragstart', (e) => {
-    draggedItem = { item: itemEl, todo };
+    draggedItem = { type: 'todo', item: itemEl, todo };
     itemEl.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', todo.id.toString());
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'todo', id: todo.id }));
   });
 
   itemEl.addEventListener('dragend', () => {
     itemEl.classList.remove('dragging');
     draggedItem = null;
-    document.querySelectorAll('.category-container, .todo-pool, .todo-list').forEach(el => {
+    document.querySelectorAll('.todo-item').forEach(el => {
       el.classList.remove('drag-over');
     });
   });
 }
 
+// 设置 TODO 列表容器的拖拽接收（用于组内排序）
+function setupTodoListDropTarget(containerEl, categoryId) {
+  containerEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  containerEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (draggedItem && draggedItem.type === 'todo') {
+      const draggedEl = draggedItem.item;
+      // 只选择直接子元素的 TODO 条目（排除子条目）
+      const siblings = [...containerEl.querySelectorAll(':scope > .todo-item:not(.dragging)')];
+      const afterElement = getDragAfterElement(containerEl, e.clientY);
+
+      // 获取新顺序
+      if (afterElement == null) {
+        containerEl.appendChild(draggedEl);
+      } else {
+        containerEl.insertBefore(draggedEl, afterElement);
+      }
+
+      // 获取该容器内所有 TODO 的新顺序（只包括直接子元素）
+      const todoElements = containerEl.querySelectorAll(':scope > .todo-item');
+      const items = [];
+      todoElements.forEach((el, index) => {
+        const id = parseInt(el.dataset.id);
+        items.push({ id, sort_order: index });
+      });
+
+      // 更新后端排序
+      await api.reorderTodos(items);
+      loadAllData();
+    }
+  });
+}
+
+// 获取拖动位置后的元素（只考虑直接子元素）
+function getDragAfterElement(container, y) {
+  const draggableElements = [...container.querySelectorAll(':scope > .todo-item:not(.dragging)')];
+
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset: offset, element: child };
+    } else {
+      return closest;
+    }
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
 // 设置分类容器的拖拽接收
-function setupCategoryDropTarget(containerEl, category) {
+function setupCategoryDropTarget(containerEl, category, headerEl) {
+  // 设置分类头部可拖动
+  headerEl.setAttribute('draggable', 'true');
+  headerEl.addEventListener('dragstart', (e) => {
+    draggedItem = { type: 'category', category, element: containerEl };
+    containerEl.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'category', id: category.id }));
+  });
+
+  containerEl.addEventListener('dragend', () => {
+    containerEl.classList.remove('dragging');
+    draggedItem = null;
+    document.querySelectorAll('.category-container, .todo-pool, .todo-list').forEach(el => {
+      el.classList.remove('drag-over');
+    });
+  });
+
+  // 接收 TODO 条目拖放
   containerEl.addEventListener('dragenter', (e) => {
     e.preventDefault();
-    if (draggedItem) {
+    if (draggedItem && draggedItem.type !== 'category') {
       containerEl.classList.add('drag-over');
     }
   });
 
   containerEl.addEventListener('dragover', (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    if (draggedItem && draggedItem.type === 'category') {
+      // 分类之间的拖拽：显示插入位置指示
+      const rect = containerEl.getBoundingClientRect();
+      const offset = e.clientY - rect.top;
+      if (offset > rect.height / 2) {
+        containerEl.style.borderBottom = '3px solid #3498db';
+        containerEl.style.borderTop = '';
+      } else {
+        containerEl.style.borderTop = '3px solid #3498db';
+        containerEl.style.borderBottom = '';
+      }
+      e.dataTransfer.dropEffect = 'move';
+    } else if (draggedItem && draggedItem.type !== 'category') {
+      e.dataTransfer.dropEffect = 'move';
+    }
   });
 
   containerEl.addEventListener('dragleave', (e) => {
     if (!containerEl.contains(e.relatedTarget)) {
       containerEl.classList.remove('drag-over');
+      containerEl.style.borderTop = '';
+      containerEl.style.borderBottom = '';
     }
   });
 
   containerEl.addEventListener('drop', async (e) => {
     e.preventDefault();
     containerEl.classList.remove('drag-over');
+    containerEl.style.borderTop = '';
+    containerEl.style.borderBottom = '';
 
-    if (draggedItem) {
+    if (!draggedItem) return;
+
+    // 处理分类之间的拖拽排序
+    if (draggedItem.type === 'category') {
+      const sourceCategory = draggedItem.category;
+      const targetCategory = category;
+
+      if (sourceCategory.id === targetCategory.id) return;
+
+      const sourceIndex = allCategories.findIndex(c => c.id === sourceCategory.id);
+      const targetIndex = allCategories.findIndex(c => c.id === targetCategory.id);
+
+      // 确定插入位置（根据鼠标位置判断是插入到前面还是后面）
+      const rect = containerEl.getBoundingClientRect();
+      const offset = e.clientY - rect.top;
+      const insertAfter = offset > rect.height / 2;
+
+      // 从原位置移除
+      allCategories.splice(sourceIndex, 1);
+      // 插入到新位置
+      allCategories.splice(insertAfter ? targetIndex : targetIndex - (sourceIndex < targetIndex ? 1 : 0), 0, sourceCategory);
+
+      // 更新后端排序
+      await updateCategoryOrder();
+      loadAllData();
+      return;
+    }
+
+    // 处理 TODO 条目拖放到分类
+    if (draggedItem.type !== 'category') {
       const sourceTodo = draggedItem.todo;
       const targetCategoryId = parseInt(containerEl.dataset.categoryId);
 
@@ -422,7 +602,6 @@ function setupPoolDropTarget(poolContainerEl) {
   poolContainerEl.addEventListener('dragenter', (e) => {
     e.preventDefault();
     if (draggedItem) {
-      console.log('dragenter POOL');
       poolContainerEl.classList.add('drag-over');
     }
   });
@@ -434,7 +613,6 @@ function setupPoolDropTarget(poolContainerEl) {
 
   poolContainerEl.addEventListener('dragleave', (e) => {
     if (!poolContainerEl.contains(e.relatedTarget)) {
-      console.log('dragleave POOL');
       poolContainerEl.classList.remove('drag-over');
     }
   });
@@ -445,7 +623,6 @@ function setupPoolDropTarget(poolContainerEl) {
 
     if (draggedItem) {
       const sourceTodo = draggedItem.todo;
-      console.log('drop to POOL:', sourceTodo);
 
       // 更新条目的分类为 POOL
       await api.updateTodo(sourceTodo.id, {
@@ -512,6 +689,71 @@ function showModal(title, defaultValue, callback) {
   };
 }
 
+// 显示添加分类弹窗（支持日期类型选项）
+function showAddCategoryForm() {
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalInput = document.getElementById('modalInput');
+  const btnClose = document.getElementById('btnClose');
+  const btnCancel = document.getElementById('btnCancel');
+  const btnConfirm = document.getElementById('btnConfirm');
+  const modalBody = document.querySelector('.modal-body');
+
+  modalTitle.textContent = '添加分类';
+  modalInput.value = '';
+  modalInput.placeholder = '请输入分类名称';
+
+  // 添加日期类型选项
+  let checkboxHtml = `
+    <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px;">
+      <input type="checkbox" id="isDateCheckbox" style="width: auto;">
+      <label for="isDateCheckbox" style="font-size: 14px;">日期类型（如：2026-04-07）</label>
+    </div>
+  `;
+
+  // 移除已存在的 checkbox（如果有）
+  const existingCheckbox = modalBody.querySelector('#isDateCheckbox');
+  if (existingCheckbox) {
+    existingCheckbox.parentElement.remove();
+  }
+  modalBody.insertAdjacentHTML('beforeend', checkboxHtml);
+
+  modal.classList.add('show');
+  modalInput.focus();
+
+  const closeModal = () => {
+    modal.classList.remove('show');
+    const checkbox = modalBody.querySelector('#isDateCheckbox');
+    if (checkbox) checkbox.parentElement.remove();
+  };
+
+  btnClose.onclick = closeModal;
+  btnCancel.onclick = closeModal;
+  btnConfirm.onclick = () => {
+    const name = modalInput.value.trim();
+    const is_date = document.getElementById('isDateCheckbox').checked;
+    if (name) {
+      const existing = allCategories.find(c => c.name === name);
+      if (existing) {
+        alert('该分类已存在');
+        return;
+      }
+      api.createCategory(name, is_date).then(() => {
+        loadAllData();
+      });
+    }
+    closeModal();
+  };
+
+  modalInput.onkeypress = (e) => {
+    if (e.key === 'Enter') btnConfirm.click();
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+}
+
 // 显示编辑表单
 function showEditForm(id, currentTitle) {
   showModal('修改条目', currentTitle, async (value) => {
@@ -545,11 +787,75 @@ function showAddTodoToCategory(categoryId, categoryName) {
 }
 
 // 编辑分类
-function showEditCategoryForm(id, currentName) {
-  showModal('修改分类', currentName, async (value) => {
-    await api.updateCategory(id, { name: value });
-    loadAllData();
-  });
+function showEditCategoryForm(id, currentName, isDate = false) {
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalInput = document.getElementById('modalInput');
+  const btnClose = document.getElementById('btnClose');
+  const btnCancel = document.getElementById('btnCancel');
+  const btnConfirm = document.getElementById('btnConfirm');
+  const modalBody = document.querySelector('.modal-body');
+
+  modalTitle.textContent = '修改分类';
+  modalInput.value = currentName;
+  modalInput.placeholder = '请输入分类名称';
+
+  // 添加日期类型选项
+  let checkboxHtml = `
+    <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px;">
+      <input type="checkbox" id="isDateCheckbox" style="width: auto;" ${isDate ? 'checked' : ''}>
+      <label for="isDateCheckbox" style="font-size: 14px;">日期类型</label>
+    </div>
+  `;
+
+  // 移除已存在的 checkbox（如果有）
+  const existingCheckbox = modalBody.querySelector('#isDateCheckbox');
+  if (existingCheckbox) {
+    existingCheckbox.parentElement.remove();
+  }
+  modalBody.insertAdjacentHTML('beforeend', checkboxHtml);
+
+  modal.classList.add('show');
+  modalInput.focus();
+
+  const closeModal = () => {
+    modal.classList.remove('show');
+    const checkbox = modalBody.querySelector('#isDateCheckbox');
+    if (checkbox) checkbox.parentElement.remove();
+  };
+
+  btnClose.onclick = closeModal;
+  btnCancel.onclick = closeModal;
+  btnConfirm.onclick = () => {
+    const name = modalInput.value.trim();
+    const is_date = document.getElementById('isDateCheckbox').checked;
+    if (name) {
+      api.updateCategory(id, { name, is_date }).then(() => {
+        loadAllData();
+      });
+    }
+    closeModal();
+  };
+
+  modalInput.onkeypress = (e) => {
+    if (e.key === 'Enter') btnConfirm.click();
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+}
+
+// 更新分类顺序
+async function updateCategoryOrder() {
+  // 过滤掉 Pool 分类（ID=1），只排序用户创建的分类
+  const order = allCategories
+    .filter(c => c.id !== DEFAULT_CATEGORY_ID)
+    .map(c => c.id);
+
+  if (order.length > 0) {
+    await api.reorderCategories(order);
+  }
 }
 
 // ==================== 数据加载 ====================
@@ -598,15 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 添加分类 - 使用弹窗
   addDateBtn.addEventListener('click', () => {
-    showModal('添加分类', '', async (name) => {
-      const existing = allCategories.find(c => c.name === name);
-      if (existing) {
-        alert('该分类已存在');
-        return;
-      }
-      await api.createCategory(name);
-      loadAllData();
-    });
+    showAddCategoryForm();
   });
 
   // 搜索分类 - 输入时实时搜索
