@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>归档查看 - TODO List</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>归档查看</h1>
+      <a href="/" class="btn btn-secondary">返回首页</a>
+    </header>
+
+    <section>
+      <h2 id="archiveTitle">加载中...</h2>
+      <div id="archiveList" class="todo-list"></div>
+    </section>
+  </div>
+
+  <script>
+    async function loadArchive() {
+      const pathParts = window.location.pathname.split('/');
+      const year = pathParts[2];
+      const month = pathParts[3];
+
+      if (!year || !month) {
+        document.getElementById('archiveTitle').textContent = '无效的归档路径';
+        return;
+      }
+
+      document.getElementById('archiveTitle').textContent = `${year}年${parseInt(month)}月`;
+
+      try {
+        const res = await fetch(`/api/archives/${year}/${month}`);
+        const data = await res.json();
+
+        if (!data.success) {
+          document.getElementById('archiveList').innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
+          return;
+        }
+
+        const todos = data.data.data?.todos || [];
+        const container = document.getElementById('archiveList');
+
+        if (todos.length === 0) {
+          container.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
+          return;
+        }
+
+        // 按日期分组显示
+        const byDate = {};
+        todos.forEach(todo => {
+          if (!byDate[todo.date]) byDate[todo.date] = [];
+          byDate[todo.date].push(todo);
+        });
+
+        Object.keys(byDate).sort().forEach(date => {
+          const dateEl = document.createElement('div');
+          dateEl.className = 'todo-item';
+          dateEl.innerHTML = `
+            <div class="todo-content">
+              <strong class="todo-title">${date}</strong>
+              <span class="todo-desc">${byDate[date].length} 条待办</span>
+            </div>
+          `;
+
+          const childrenList = document.createElement('div');
+          childrenList.className = 'children-list';
+          childrenList.style.display = 'block';
+
+          byDate[date].forEach(todo => {
+            const childEl = document.createElement('div');
+            childEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+            childEl.innerHTML = `
+              <div class="todo-content">
+                <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
+                <span class="todo-title">${todo.title}</span>
+                ${todo.description ? `<span class="todo-desc">${todo.description}</span>` : ''}
+              </div>
+            `;
+            childEl.style.marginLeft = '20px';
+            childrenList.appendChild(childEl);
+          });
+
+          dateEl.appendChild(childrenList);
+          container.appendChild(dateEl);
+        });
+
+      } catch (error) {
+        document.getElementById('archiveList').innerHTML = '<div class="empty-state">加载失败：' + error.message + '</div>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadArchive);
+  </script>
+</body>
+</html>

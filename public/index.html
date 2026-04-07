@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TODO</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>TODO</h1>
+    </header>
+
+    <!-- TODO 池 -->
+    <section class="todo-pool">
+      <h2>POOL</h2>
+      <div class="add-todo-form">
+        <input type="text" id="poolTitle" placeholder="添加 TODO..." class="input-field" style="max-width: 200px;">
+        <button id="addPoolTodo" class="btn btn-primary">+</button>
+      </div>
+      <div id="poolList" class="todo-list"></div>
+    </section>
+
+    <!-- 待办列表 -->
+    <section class="todo-section">
+      <h2>待办列表</h2>
+      <div class="add-date-form">
+        <input type="text" id="searchCategoryInput" class="input-field input-search" placeholder="搜索分类...">
+        <button id="addDateBtn" class="btn btn-primary">添加分类</button>
+      </div>
+      <div id="todoList" class="todo-list"></div>
+    </section>
+  </div>
+
+  <!-- 弹窗 -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">标题</h3>
+        <button class="btn-close" id="btnClose">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="modalInput" class="modal-input" placeholder="请输入内容...">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancel">取消</button>
+        <button class="btn btn-primary" id="btnConfirm">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="todoItemTemplate">
+    <div class="todo-item">
+      <div class="todo-row">
+        <input type="checkbox" class="todo-checkbox">
+        <span class="todo-title"></span>
+        <div class="todo-actions">
+          <button class="btn-icon btn-add-child" title="添加子条目">➕</button>
+          <button class="btn-icon btn-edit" title="编辑">✏️</button>
+          <button class="btn-icon btn-delete" title="删除">🗑️</button>
+        </div>
+      </div>
+      <ul class="children-list"></ul>
+    </div>
+  </template>
+
+  <template id="childItemTemplate">
+    <div class="todo-item todo-child">
+      <div class="todo-row">
+        <input type="checkbox" class="todo-checkbox">
+        <span class="todo-title"></span>
+        <div class="todo-actions">
+          <button class="btn-icon btn-add-child" title="添加子条目">➕</button>
+          <button class="btn-icon btn-edit" title="编辑">✏️</button>
+          <button class="btn-icon btn-delete" title="删除">🗑️</button>
+        </div>
+      </div>
+      <ul class="children-list"></ul>
+    </div>
+  </template>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
