@@ -109,72 +109,87 @@
           return;
         }
 
-        const archiveData = data.data.data || data.data;
+        // 处理两种数据格式：
+        // 1. archives 表中的单个归档对象 { category_name, todos }
+        // 2. 从 todos 表查询返回的数组 [{ category_name, todos }, ...]
+        let archiveGroups = [];
+        if (Array.isArray(data.data)) {
+          archiveGroups = data.data;
+        } else {
+          const archiveData = data.data.data || data.data;
+          const parsedData = typeof archiveData === 'string' ? JSON.parse(archiveData) : archiveData;
+          if (parsedData?.todos) {
+            archiveGroups = [{
+              category_name: archiveData?.category_name || 'Unknown',
+              todos: parsedData.todos
+            }];
+          }
+        }
 
-        // 如果 data 是字符串，需要解析
-        const parsedData = typeof archiveData === 'string' ? JSON.parse(archiveData) : archiveData;
-        const todos = parsedData?.todos || [];
-        const categoryName = archiveData?.category_name || '';
-
-        if (todos.length === 0) {
+        if (archiveGroups.length === 0) {
           archiveList.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
           return;
         }
 
-        // 按分类名称显示
+        // 渲染所有分类组
         archiveList.innerHTML = '';
 
-        const dateEl = document.createElement('div');
-        dateEl.className = 'archive-date-group';
+        archiveGroups.forEach(group => {
+          const { category_name, todos } = group;
+          if (!todos || todos.length === 0) return;
 
-        const dateHeader = document.createElement('div');
-        dateHeader.className = 'archive-date-header';
-        dateHeader.innerHTML = `<strong>${categoryName}</strong> <span>(${todos.length}条)</span>`;
-        dateEl.appendChild(dateHeader);
+          const dateEl = document.createElement('div');
+          dateEl.className = 'archive-date-group';
 
-        const childrenList = document.createElement('div');
-        childrenList.className = 'children-list';
+          const dateHeader = document.createElement('div');
+          dateHeader.className = 'archive-date-header';
+          dateHeader.innerHTML = `<strong>${category_name}</strong> <span>(${todos.length}条)</span>`;
+          dateEl.appendChild(dateHeader);
 
-        // 构建父子关系
-        const rootTodos = todos.filter(t => !t.parent_id);
-        const childrenMap = {};
-        todos.filter(t => t.parent_id).forEach(t => {
-          if (!childrenMap[t.parent_id]) childrenMap[t.parent_id] = [];
-          childrenMap[t.parent_id].push(t);
+          const childrenList = document.createElement('div');
+          childrenList.className = 'children-list';
+
+          // 构建父子关系
+          const rootTodos = todos.filter(t => !t.parent_id);
+          const childrenMap = {};
+          todos.filter(t => t.parent_id).forEach(t => {
+            if (!childrenMap[t.parent_id]) childrenMap[t.parent_id] = [];
+            childrenMap[t.parent_id].push(t);
+          });
+
+          // 渲染根条目和子条目
+          rootTodos.forEach(todo => {
+            const todoEl = document.createElement('div');
+            todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+            todoEl.innerHTML = `
+              <div class="todo-row">
+                <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
+                <span class="todo-title">${todo.title}</span>
+              </div>
+            `;
+            childrenList.appendChild(todoEl);
+
+            // 渲染子条目
+            const childTodos = childrenMap[todo.id] || [];
+            if (childTodos.length > 0) {
+              childTodos.forEach(child => {
+                const childEl = document.createElement('div');
+                childEl.className = `todo-child ${child.completed ? 'completed' : ''}`;
+                childEl.style.marginLeft = '30px';
+                childEl.innerHTML = `
+                  <div class="todo-row">
+                    <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
+                    <span class="todo-title">${child.title}</span>
+                  </div>
+                `;
+                childrenList.appendChild(childEl);
+              });
+            }
+          });
+
+          dateEl.appendChild(childrenList);
+          archiveList.appendChild(dateEl);
         });
-
-        // 渲染根条目和子条目
-        rootTodos.forEach(todo => {
-          const todoEl = document.createElement('div');
-          todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-          todoEl.innerHTML = `
-            <div class="todo-row">
-              <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
-              <span class="todo-title">${todo.title}</span>
-            </div>
-          `;
-          childrenList.appendChild(todoEl);
-
-          // 渲染子条目
-          const childTodos = childrenMap[todo.id] || [];
-          if (childTodos.length > 0) {
-            childTodos.forEach(child => {
-              const childEl = document.createElement('div');
-              childEl.className = `todo-child ${child.completed ? 'completed' : ''}`;
-              childEl.style.marginLeft = '30px';
-              childEl.innerHTML = `
-                <div class="todo-row">
-                  <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
-                  <span class="todo-title">${child.title}</span>
-                </div>
-              `;
-              childrenList.appendChild(childEl);
-            });
-          }
-        });
-
-        dateEl.appendChild(childrenList);
-        archiveList.appendChild(dateEl);
 
       } catch (error) {
         archiveList.innerHTML = '<div class="empty-state">加载失败：' + error.message + '</div>';

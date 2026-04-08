@@ -62,17 +62,43 @@ function initDatabase() {
     )
   `);
 
-  // 创建 archives 表
+  // 创建 archives 表（移除 UNIQUE 约束，允许同一月份有多条归档记录）
   db.exec(`
     CREATE TABLE IF NOT EXISTS archives (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       month TEXT NOT NULL,
       year TEXT NOT NULL,
       data JSON NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(year, month)
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 为现有数据库移除 UNIQUE 约束（通过重建表）
+  try {
+    const tableInfo = db.pragma("table_info('archives')");
+    const indexList = db.pragma("index_list('archives')");
+
+    // 检查是否有 unique 索引
+    const hasUniqueIndex = indexList.some(idx => idx.name.includes('sqlite_autoindex'));
+    if (hasUniqueIndex) {
+      // 需要重建表来移除 UNIQUE 约束
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS archives_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          month TEXT NOT NULL,
+          year TEXT NOT NULL,
+          data JSON NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      db.exec('INSERT INTO archives_new SELECT * FROM archives');
+      db.exec('DROP TABLE archives');
+      db.exec('ALTER TABLE archives_new RENAME TO archives');
+      console.log('archives 表 UNIQUE 约束已移除');
+    }
+  } catch (e) {
+    console.log('archives 表结构检查完成');
+  }
 
   // 创建 settings 表
   db.exec(`
@@ -216,17 +242,35 @@ const todoDao = {
 
   // 归档 TODO 数据
   archive(year, month, data) {
+    // 不再使用 UNIQUE 约束，允许同一月份有多条归档记录
+    // 每次归档都创建新记录
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO archives (year, month, data)
+      INSERT INTO archives (year, month, data)
       VALUES (?, ?, ?)
     `);
     return stmt.run(year, month, JSON.stringify(data));
   },
 
-  // 获取归档数据
+  // 获取归档数据（返回该月份的所有归档记录）
   getArchive(year, month) {
-    const stmt = db.prepare('SELECT * FROM archives WHERE year = ? AND month = ?');
-    return stmt.get(year, month);
+    const stmt = db.prepare('SELECT * FROM archives WHERE year = ? AND month = ? ORDER BY created_at DESC');
+    return stmt.all(year, month); // 返回数组，不是单条记录
+  },
+
+  // 获取单个归档记录（按 id）
+  getArchiveById(id) {
+    const stmt = db.prepare('SELECT * FROM archives WHERE id = ?');
+    return stmt.get(id);
+  },
+
+  // 按创建日期范围获取 TODO（用于 archives 表没有数据时的 fallback）
+  getByDateRange(startDate, endDate) {
+    const stmt = db.prepare(`
+      SELECT * FROM todos
+      WHERE created_at >= ? AND created_at <= ?
+      ORDER BY created_at, sort_order
+    `);
+    return stmt.all(startDate, endDate);
   },
 
   // 获取所有归档记录
@@ -307,7 +351,21 @@ const todoDao = {
         category_name: category.name,
         todos: todos
       };
-      this.archive(new Date().getFullYear().toString(), String(new Date().getMonth() + 1).padStart(2, '0'), archiveData);
+
+      // 从分类名称中提取日期（如 2026-04-07），而不是使用当前日期
+      // 这样可以避免同一月份多次归档时数据被覆盖
+      let year, month;
+      const dateMatch = category.name.match(/(\d{4})-(\d{2})-\d{2}/);
+      if (dateMatch) {
+        year = dateMatch[1];
+        month = dateMatch[2];
+      } else {
+        // 如果不是日期格式的分类名，使用当前年月
+        year = new Date().getFullYear().toString();
+        month = String(new Date().getMonth() + 1).padStart(2, '0');
+      }
+
+      this.archive(year, month, archiveData);
     }
 
     // 删除该分类下的所有 TODO

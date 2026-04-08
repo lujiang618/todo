@@ -165,16 +165,55 @@ router.delete('/todos/:id', (req, res) => {
 router.get('/archives/:year/:month', (req, res) => {
   try {
     const { year, month } = req.params;
-    const archive = todoDao.getArchive(year, month);
-    if (!archive) {
+
+    // 首先尝试从 archives 表获取归档数据
+    const archives = todoDao.getArchive(year, month);
+
+    if (archives && archives.length > 0) {
+      // 解析每条记录的 data 字段（JSON 字符串）
+      const archiveData = archives.map(archive => ({
+        id: archive.id,
+        created_at: archive.created_at,
+        ...(typeof archive.data === 'string' ? JSON.parse(archive.data) : archive.data)
+      }));
+      return res.json({ success: true, data: archiveData });
+    }
+
+    // 如果 archives 表没有数据，从 todos 表中按创建日期范围查询
+    const startDate = `${year}-${month}-01`;
+    const lastDay = new Date(year, parseInt(month) - 1, 0).getDate();
+    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+
+    const todos = todoDao.getByDateRange(startDate, endDate);
+
+    if (todos.length === 0) {
       return res.status(404).json({ success: false, error: 'Archive not found' });
     }
-    // 解析 data 字段（JSON 字符串）
-    const archiveData = {
-      ...archive,
-      data: typeof archive.data === 'string' ? JSON.parse(archive.data) : archive.data
-    };
-    res.json({ success: true, data: archiveData });
+
+    // 按分类名称分组
+    const categories = todoDao.getAllCategories(true); // 包括已归档的分类
+    const categoryMap = {};
+    categories.forEach(cat => {
+      categoryMap[cat.id] = cat.name;
+    });
+
+    // 按 category_id 分组
+    const groupedByCategory = {};
+    todos.forEach(todo => {
+      const catId = todo.category_id || 1;
+      if (!groupedByCategory[catId]) {
+        groupedByCategory[catId] = {
+          category_name: categoryMap[catId] || 'Unknown',
+          todos: []
+        };
+      }
+      groupedByCategory[catId].todos.push(todo);
+    });
+
+    // 返回所有分类的数据
+    const result = Object.values(groupedByCategory);
+    res.json({ success: true, data: result });
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
