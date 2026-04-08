@@ -511,6 +511,10 @@ function createChildElement(todo) {
     }
   });
 
+  // 子条目也支持拖拽
+  itemEl.setAttribute('draggable', true);
+  setupTodoDragAndDrop(itemEl, todo);
+
   return itemEl;
 }
 
@@ -529,9 +533,59 @@ function setupTodoDragAndDrop(itemEl, todo) {
   itemEl.addEventListener('dragend', () => {
     itemEl.classList.remove('dragging');
     draggedItem = null;
-    document.querySelectorAll('.todo-item').forEach(el => {
+    document.querySelectorAll('.todo-item, .todo-child').forEach(el => {
       el.classList.remove('drag-over');
     });
+  });
+
+  // 允许条目接收拖放（变成子条目）
+  itemEl.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    if (draggedItem && draggedItem.type === 'todo' && draggedItem.todo.id !== todo.id) {
+      // 不能拖到自己身上，也不能拖到自己的子条目上
+      if (!isDescendantOf(draggedItem.todo, todo.id)) {
+        itemEl.classList.add('drag-over');
+      }
+    }
+  });
+
+  itemEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (draggedItem && draggedItem.type === 'todo' && draggedItem.todo.id !== todo.id) {
+      if (!isDescendantOf(draggedItem.todo, todo.id)) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+    }
+  });
+
+  itemEl.addEventListener('dragleave', (e) => {
+    if (!itemEl.contains(e.relatedTarget)) {
+      itemEl.classList.remove('drag-over');
+    }
+  });
+
+  itemEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    itemEl.classList.remove('drag-over');
+
+    if (draggedItem && draggedItem.type === 'todo') {
+      const sourceTodo = draggedItem.todo;
+      const targetTodo = todo;
+
+      // 不能拖到自己身上
+      if (sourceTodo.id === targetTodo.id) return;
+
+      // 不能拖到自己的祖先节点上（会形成循环）
+      if (isDescendantOf(draggedItem.todo, todo.id)) return;
+
+      // 将源条目变成目标条目的子条目
+      await api.updateTodo(sourceTodo.id, {
+        parent_id: targetTodo.id,
+        category_id: targetTodo.category_id  // 子条目继承父条目的分类
+      });
+
+      loadAllData();
+    }
   });
 }
 
@@ -763,6 +817,30 @@ function highlightMatch(text, searchTerm) {
 // 转义正则表达式特殊字符
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 检查 todo 是否是 targetParentId 的后代（直接子或间接子）
+function isDescendantOf(todo, targetParentId) {
+  let currentParentId = todo.parent_id;
+  while (currentParentId != null) {
+    if (currentParentId === targetParentId) {
+      return true;
+    }
+    // 找到父条目
+    const parent = findTodoById(currentParentId);
+    if (!parent) break;
+    currentParentId = parent.parent_id;
+  }
+  return false;
+}
+
+// 根据 ID 查找 todo
+function findTodoById(id) {
+  for (const categoryId in categoryTodos) {
+    const todo = categoryTodos[categoryId].find(t => t.id === id);
+    if (todo) return todo;
+  }
+  return null;
 }
 
 // ==================== 弹窗表单 ====================

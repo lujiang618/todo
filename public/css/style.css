@@ -215,6 +215,12 @@ mark {
   background: #d4edff;
 }
 
+/* 子条目拖拽悬停样式 */
+.todo-child.drag-over {
+  border: 2px dashed #3498db;
+  background: #d4edff;
+}
+
 /* POOL 区域拖拽样式 */
 .todo-pool.drag-over,
 .todo-list.drag-over {
