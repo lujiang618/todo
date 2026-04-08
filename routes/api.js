@@ -161,96 +161,48 @@ router.delete('/todos/:id', (req, res) => {
   }
 });
 
-// 获取归档数据
+// 获取归档数据（按分类名称中的日期）
 router.get('/archives/:year/:month', (req, res) => {
   try {
     const { year, month } = req.params;
+    const targetMonth = `${year}-${month}`; // 如：2026-04
 
-    // 首先尝试从 archives 表获取归档数据
-    const archives = todoDao.getArchive(year, month);
+    // 获取所有已归档的分类（包括未归档的）
+    const categories = todoDao.getAllCategories(true);
 
-    if (archives && archives.length > 0) {
-      // 解析每条记录的 data 字段（JSON 字符串）
-      const archiveData = archives.map(archive => ({
-        id: archive.id,
-        created_at: archive.created_at,
-        ...(typeof archive.data === 'string' ? JSON.parse(archive.data) : archive.data)
-      }));
-      return res.json({ success: true, data: archiveData });
-    }
-
-    // 如果 archives 表没有数据，从 todos 表中按创建日期范围查询
-    const startDate = `${year}-${month}-01`;
-    const lastDay = new Date(year, parseInt(month) - 1, 0).getDate();
-    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')} 23:59:59`;
-
-    const todos = todoDao.getByDateRange(startDate, endDate);
-
-    if (todos.length === 0) {
-      return res.status(404).json({ success: false, error: 'Archive not found' });
-    }
-
-    // 按分类名称分组
-    const categories = todoDao.getAllCategories(true); // 包括已归档的分类
-    const categoryMap = {};
-    categories.forEach(cat => {
-      categoryMap[cat.id] = cat.name;
-    });
-
-    // 按 category_id 分组
-    const groupedByCategory = {};
-    todos.forEach(todo => {
-      const catId = todo.category_id || 1;
-      if (!groupedByCategory[catId]) {
-        groupedByCategory[catId] = {
-          category_name: categoryMap[catId] || 'Unknown',
-          todos: []
-        };
+    // 过滤出该月份的分类（从分类名称中提取日期）
+    const monthCategories = categories.filter(cat => {
+      const dateMatch = cat.name.match(/(\d{4})-(\d{2})/);
+      if (dateMatch) {
+        return `${dateMatch[1]}-${dateMatch[2]}` === targetMonth;
       }
-      groupedByCategory[catId].todos.push(todo);
+      return false;
     });
 
-    // 返回所有分类的数据
-    const result = Object.values(groupedByCategory);
+    if (monthCategories.length === 0) {
+      return res.status(404).json({ success: false, error: '该月份暂无归档数据' });
+    }
+
+    // 获取这些分类下的所有 TODO
+    const result = [];
+    for (const category of monthCategories) {
+      const todos = todoDao.getByCategory(category.id);
+      if (todos.length > 0) {
+        result.push({
+          category_id: category.id,
+          category_name: category.name,
+          archived: category.archived,
+          todos
+        });
+      }
+    }
+
+    if (result.length === 0) {
+      return res.status(404).json({ success: false, error: '该月份暂无归档数据' });
+    }
+
     res.json({ success: true, data: result });
 
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 获取所有归档列表
-router.get('/archives', (req, res) => {
-  try {
-    const archives = todoDao.getAllArchives();
-    res.json({ success: true, data: archives });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 手动触发归档
-router.post('/archives/archive', (req, res) => {
-  try {
-    const { year, month } = req.body;
-    if (!year || !month) {
-      return res.status(400).json({ success: false, error: 'Year and month are required' });
-    }
-
-    // 获取该月的所有 TODO
-    const startDate = `${year}-${month}-01`;
-    const lastDay = new Date(year, parseInt(month), 0).getDate();
-    const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
-
-    const todos = todoDao.getDateRange(startDate, endDate);
-
-    // 归档
-    todoDao.archive(year, month, { todos });
-
-    // 可选：删除已归档的数据
-    // todoDao.deleteByDateRange(startDate, endDate);
-
-    res.json({ success: true, message: `Archived ${todos.length} todos for ${year}-${month}` });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

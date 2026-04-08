@@ -260,8 +260,8 @@ function createCategoryElement(category, searchTerm = '') {
       const todosInCategory = categoryTodos[category.id] || [];
       const count = todosInCategory.length;
       const message = count > 0
-        ? `该分类下的 ${count} 个条目将被保存到归档历史记录中并删除。`
-        : '归档后该分类将被删除。';
+        ? `该分类下的 ${count} 个条目将被移动到历史记录，不再在待办列表显示。`
+        : '归档后该分类将不再在待办列表显示。';
 
       const modal = document.getElementById('modal');
       const modalTitle = document.getElementById('modalTitle');

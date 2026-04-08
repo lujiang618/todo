@@ -62,7 +62,8 @@ function initDatabase() {
     )
   `);
 
-  // 创建 archives 表（移除 UNIQUE 约束，允许同一月份有多条归档记录）
+  // 创建 archives 表（已废弃，仅保留向后兼容）
+  // 归档逻辑已改为仅标记分类的 archived 字段，不再使用 archives 表
   db.exec(`
     CREATE TABLE IF NOT EXISTS archives (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,33 +73,6 @@ function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // 为现有数据库移除 UNIQUE 约束（通过重建表）
-  try {
-    const tableInfo = db.pragma("table_info('archives')");
-    const indexList = db.pragma("index_list('archives')");
-
-    // 检查是否有 unique 索引
-    const hasUniqueIndex = indexList.some(idx => idx.name.includes('sqlite_autoindex'));
-    if (hasUniqueIndex) {
-      // 需要重建表来移除 UNIQUE 约束
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS archives_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          month TEXT NOT NULL,
-          year TEXT NOT NULL,
-          data JSON NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      db.exec('INSERT INTO archives_new SELECT * FROM archives');
-      db.exec('DROP TABLE archives');
-      db.exec('ALTER TABLE archives_new RENAME TO archives');
-      console.log('archives 表 UNIQUE 约束已移除');
-    }
-  } catch (e) {
-    console.log('archives 表结构检查完成');
-  }
 
   // 创建 settings 表
   db.exec(`
@@ -240,40 +214,7 @@ const todoDao = {
     return stmt.all(startDate, endDate);
   },
 
-  // 归档 TODO 数据
-  archive(year, month, data) {
-    // 不再使用 UNIQUE 约束，允许同一月份有多条归档记录
-    // 每次归档都创建新记录
-    const stmt = db.prepare(`
-      INSERT INTO archives (year, month, data)
-      VALUES (?, ?, ?)
-    `);
-    return stmt.run(year, month, JSON.stringify(data));
-  },
-
-  // 获取归档数据（返回该月份的所有归档记录）
-  getArchive(year, month) {
-    const stmt = db.prepare('SELECT * FROM archives WHERE year = ? AND month = ? ORDER BY created_at DESC');
-    return stmt.all(year, month); // 返回数组，不是单条记录
-  },
-
-  // 获取单个归档记录（按 id）
-  getArchiveById(id) {
-    const stmt = db.prepare('SELECT * FROM archives WHERE id = ?');
-    return stmt.get(id);
-  },
-
-  // 按创建日期范围获取 TODO（用于 archives 表没有数据时的 fallback）
-  getByDateRange(startDate, endDate) {
-    const stmt = db.prepare(`
-      SELECT * FROM todos
-      WHERE created_at >= ? AND created_at <= ?
-      ORDER BY created_at, sort_order
-    `);
-    return stmt.all(startDate, endDate);
-  },
-
-  // 获取所有归档记录
+  // 获取所有归档记录（已废弃，仅保留向后兼容）
   getAllArchives() {
     const stmt = db.prepare('SELECT * FROM archives ORDER BY year DESC, month DESC');
     return stmt.all();
@@ -337,42 +278,14 @@ const todoDao = {
     return this.getCategoryById(id);
   },
 
-  // 归档分类（将分类下的所有 TODO 归档到 archives 表）
+  // 归档分类（仅标记分类为已归档状态，不删除数据）
   archiveCategory(id) {
     const category = this.getCategoryById(id);
     if (!category) return false;
 
-    // 获取该分类下的所有 TODO
-    const todos = this.getByCategory(id);
-
-    if (todos.length > 0) {
-      // 保存到 archives 表
-      const archiveData = {
-        category_name: category.name,
-        todos: todos
-      };
-
-      // 从分类名称中提取日期（如 2026-04-07），而不是使用当前日期
-      // 这样可以避免同一月份多次归档时数据被覆盖
-      let year, month;
-      const dateMatch = category.name.match(/(\d{4})-(\d{2})-\d{2}/);
-      if (dateMatch) {
-        year = dateMatch[1];
-        month = dateMatch[2];
-      } else {
-        // 如果不是日期格式的分类名，使用当前年月
-        year = new Date().getFullYear().toString();
-        month = String(new Date().getMonth() + 1).padStart(2, '0');
-      }
-
-      this.archive(year, month, archiveData);
-    }
-
-    // 删除该分类下的所有 TODO
-    const deleteTodos = db.prepare('DELETE FROM todos WHERE category_id = ?');
-    deleteTodos.run(id);
-
-    // 标记分类为已归档
+    // 只需将分类标记为已归档
+    // 已归档的分类不会在待办列表中显示（getAllCategories 默认排除 archived=1 的分类）
+    // 数据仍然保留在 todos 表中，可以在历史记录页面查看
     const updateCategory = db.prepare('UPDATE categories SET archived = 1 WHERE id = ?');
     updateCategory.run(id);
 

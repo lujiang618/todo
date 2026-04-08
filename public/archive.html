@@ -109,24 +109,9 @@
           return;
         }
 
-        // 处理两种数据格式：
-        // 1. archives 表中的单个归档对象 { category_name, todos }
-        // 2. 从 todos 表查询返回的数组 [{ category_name, todos }, ...]
-        let archiveGroups = [];
-        if (Array.isArray(data.data)) {
-          archiveGroups = data.data;
-        } else {
-          const archiveData = data.data.data || data.data;
-          const parsedData = typeof archiveData === 'string' ? JSON.parse(archiveData) : archiveData;
-          if (parsedData?.todos) {
-            archiveGroups = [{
-              category_name: archiveData?.category_name || 'Unknown',
-              todos: parsedData.todos
-            }];
-          }
-        }
+        const groups = data.data;
 
-        if (archiveGroups.length === 0) {
+        if (groups.length === 0) {
           archiveList.innerHTML = '<div class="empty-state">该月份暂无归档数据</div>';
           return;
         }
@@ -134,7 +119,7 @@
         // 渲染所有分类组
         archiveList.innerHTML = '';
 
-        archiveGroups.forEach(group => {
+        groups.forEach(group => {
           const { category_name, todos } = group;
           if (!todos || todos.length === 0) return;
 
