@@ -74,6 +74,15 @@ function initDatabase() {
     )
   `);
 
+  // 创建 settings 表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // 创建索引
   db.exec('CREATE INDEX IF NOT EXISTS idx_todos_date ON todos(date)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_todos_parent ON todos(parent_id)');
@@ -327,6 +336,50 @@ const todoDao = {
       }
     });
     updateMany(order);
+    return true;
+  },
+
+  // ==================== 设置相关方法 ====================
+
+  // 获取所有设置
+  getAllSettings() {
+    const stmt = db.prepare('SELECT * FROM settings');
+    const rows = stmt.all();
+    const settings = {};
+    rows.forEach(row => {
+      settings[row.key] = row.value;
+    });
+    return settings;
+  },
+
+  // 获取单个设置
+  getSetting(key) {
+    const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+    const row = stmt.get(key);
+    return row ? row.value : null;
+  },
+
+  // 更新设置
+  updateSetting(key, value) {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `);
+    return stmt.run(key, value);
+  },
+
+  // 批量更新设置
+  updateSettings(settings) {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `);
+    const updateMany = db.transaction((settings) => {
+      for (const [key, value] of Object.entries(settings)) {
+        stmt.run(key, value);
+      }
+    });
+    updateMany(settings);
     return true;
   },
 };

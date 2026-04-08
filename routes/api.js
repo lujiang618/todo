@@ -1,5 +1,5 @@
 const express = require('express');
-const { todoDao } = require('../db');
+const { todoDao, db } = require('../db');
 
 const router = express.Router();
 
@@ -220,6 +220,80 @@ router.post('/archives/archive', (req, res) => {
 // 健康检查
 router.get('/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ==================== 设置相关 API ====================
+
+// 获取所有设置
+router.get('/settings', (req, res) => {
+  try {
+    const settings = todoDao.getAllSettings();
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 更新设置
+router.put('/settings', (req, res) => {
+  try {
+    const settings = req.body;
+    todoDao.updateSettings(settings);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 上传背景图片
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// 确保背景目录存在
+const bgDir = path.join(__dirname, '..', 'data', 'backgrounds');
+if (!fs.existsSync(bgDir)) {
+  fs.mkdirSync(bgDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, bgDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const uniqueName = `bg-${Date.now()}${ext}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    if (extname) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持图片文件（jpg, png, gif, webp）'));
+    }
+  }
+});
+
+router.post('/settings/background-image', upload.single('image'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+    // 返回文件名，保存到数据库
+    res.json({
+      success: true,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 module.exports = router;

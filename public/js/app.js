@@ -1054,6 +1054,40 @@ document.addEventListener('DOMContentLoaded', () => {
   // 全部收起
   collapseAllBtn.addEventListener('click', collapseAll);
 
+  // 加载背景设置
+  loadBackgroundSettings();
+
+  // 监听设置变化
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'settingsChanged') {
+      loadBackgroundSettings();
+    }
+  });
+
   // 初始加载
   loadAllData();
 });
+
+// ==================== 背景设置 ====================
+async function loadBackgroundSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    if (data.success) {
+      const settings = data.data || {};
+      const bgType = settings.background_type || 'color';
+      const bgColor = settings.background_color || '#f5f5f5';
+      const bgImage = settings.background_image || '';
+
+      if (bgType === 'image' && bgImage) {
+        document.body.style.setProperty('--bg-image', `url(/backgrounds/${bgImage})`);
+        document.body.style.setProperty('--bg-color', 'transparent');
+      } else {
+        document.body.style.setProperty('--bg-image', 'none');
+        document.body.style.setProperty('--bg-color', bgColor);
+      }
+    }
+  } catch (error) {
+    console.error('加载背景设置失败:', error);
+  }
+}

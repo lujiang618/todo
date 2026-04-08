@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 8210;
 // 中间件
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/backgrounds', express.static(path.join(__dirname, 'data', 'backgrounds')));
 
 // API 路由
 app.use('/api', apiRoutes);
@@ -26,6 +27,11 @@ app.get('/archives', (req, res) => {
 // 归档详情页面
 app.get('/archives/:year/:month', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'archive.html'));
+});
+
+// 设置页面
+app.get('/settings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'settings.html'));
 });
 
 // 初始化数据库并启动服务
