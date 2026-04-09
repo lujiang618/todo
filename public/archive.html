@@ -31,6 +31,23 @@
     </section>
   </div>
 
+  <!-- 弹窗 -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">标题</h3>
+        <button class="btn-close" id="btnClose">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="modalInput" class="modal-input" placeholder="请输入内容...">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancel">取消</button>
+        <button class="btn btn-primary" id="btnConfirm">确定</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const yearSelect = document.getElementById('yearSelect');
     const monthSelect = document.getElementById('monthSelect');
@@ -225,27 +242,64 @@
     });
 
     // 删除归档分类
+    let deleteCallback = null;
+
+    function showDeleteConfirm(categoryId, categoryName) {
+      const modal = document.getElementById('modal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalBody = document.querySelector('.modal-body');
+      const modalInput = document.getElementById('modalInput');
+      const btnClose = document.getElementById('btnClose');
+      const btnCancel = document.getElementById('btnCancel');
+      const btnConfirm = document.getElementById('btnConfirm');
+
+      modalTitle.textContent = '删除确认';
+      modalBody.innerHTML = `
+        <p style="margin-bottom: 15px;">确定要删除归档分类 "<strong>${categoryName}</strong>" 吗？</p>
+        <p style="color: #e74c3c;">该分类下的所有条目将被永久删除，此操作不可恢复。</p>
+      `;
+
+      modal.classList.add('show');
+
+      const closeModal = () => {
+        modal.classList.remove('show');
+        modalBody.innerHTML = '<input type="text" id="modalInput" class="modal-input" placeholder="请输入内容...">';
+        deleteCallback = null;
+      };
+
+      btnClose.onclick = closeModal;
+      btnCancel.onclick = closeModal;
+      btnConfirm.onclick = () => {
+        if (deleteCallback) deleteCallback();
+        closeModal();
+      };
+
+      modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+      };
+    }
+
+    // 删除归档分类
     async function deleteArchiveCategory(categoryId, categoryName) {
-      if (!confirm(`确定要删除归档分类 "${categoryName}" 吗？\n该分类下的所有条目也将被永久删除。`)) {
-        return;
-      }
+      deleteCallback = async () => {
+        try {
+          const res = await fetch(`/api/categories/${categoryId}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
 
-      try {
-        const res = await fetch(`/api/categories/${categoryId}`, {
-          method: 'DELETE'
-        });
-        const data = await res.json();
-
-        if (data.success) {
-          alert('已删除归档分类');
-          // 重新加载当前月份的归档数据
-          loadArchive(yearSelect.value, monthSelect.value);
-        } else {
-          alert('删除失败：' + (data.error || '未知错误'));
+          if (data.success) {
+            // 重新加载当前月份的归档数据
+            loadArchive(yearSelect.value, monthSelect.value);
+          } else {
+            alert('删除失败：' + (data.error || '未知错误'));
+          }
+        } catch (error) {
+          alert('删除失败：' + error.message);
         }
-      } catch (error) {
-        alert('删除失败：' + error.message);
-      }
+      };
+
+      showDeleteConfirm(categoryId, categoryName);
     }
 
     // 加载背景设置
