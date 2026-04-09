@@ -120,7 +120,7 @@
         archiveList.innerHTML = '';
 
         groups.forEach(group => {
-          const { category_name, todos } = group;
+          const { category_id, category_name, archived, todos } = group;
           if (!todos || todos.length === 0) return;
 
           const dateEl = document.createElement('div');
@@ -128,8 +128,18 @@
 
           const dateHeader = document.createElement('div');
           dateHeader.className = 'archive-date-header';
-          dateHeader.innerHTML = `<strong>${category_name}</strong> <span>(${todos.length}条)</span>`;
+          dateHeader.innerHTML = `
+            <div class="archive-date-header-left">
+              <strong>${category_name}</strong> <span>(${todos.length}条)</span>
+            </div>
+            <button class="btn-delete-archive" data-category-id="${category_id}" data-category-name="${category_name}" title="删除归档分类">🗑️</button>
+          `;
           dateEl.appendChild(dateHeader);
+
+          // 绑定删除按钮事件
+          dateHeader.querySelector('.btn-delete-archive').addEventListener('click', () => {
+            deleteArchiveCategory(category_id, category_name);
+          });
 
           const childrenList = document.createElement('div');
           childrenList.className = 'children-list';
@@ -213,6 +223,30 @@
         loadBackgroundSettings();
       }
     });
+
+    // 删除归档分类
+    async function deleteArchiveCategory(categoryId, categoryName) {
+      if (!confirm(`确定要删除归档分类 "${categoryName}" 吗？\n该分类下的所有条目也将被永久删除。`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/categories/${categoryId}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          alert('已删除归档分类');
+          // 重新加载当前月份的归档数据
+          loadArchive(yearSelect.value, monthSelect.value);
+        } else {
+          alert('删除失败：' + (data.error || '未知错误'));
+        }
+      } catch (error) {
+        alert('删除失败：' + error.message);
+      }
+    }
 
     // 加载背景设置
     async function loadBackgroundSettings() {

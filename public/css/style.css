@@ -674,6 +674,12 @@ mark {
   border-bottom: 1px solid #e0e0e0;
 }
 
+.archive-date-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .archive-date-header strong {
   color: #2c3e50;
   font-size: 1rem;
@@ -682,6 +688,22 @@ mark {
 .archive-date-header span {
   color: #95a5a6;
   font-size: 0.9rem;
+}
+
+.btn-delete-archive {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0.5;
+}
+
+.btn-delete-archive:hover {
+  background: #ffebee;
+  opacity: 1;
 }
 
 .loading {
