@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  todo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: todo-web-app
+    restart: unless-stopped
+    ports:
+      - "8210:8210"
+    volumes:
+      # 持久化 SQLite 数据库文件
+      - todo-data:/app/data
+      # 持久化背景图片
+      - todo-backgrounds:/app/data/backgrounds
+    environment:
+      - NODE_ENV=production
+      - PORT=8210
+    # 限制资源使用
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+# 定义持久化卷
+volumes:
+  todo-data:
+    driver: local
+  todo-backgrounds:
+    driver: local

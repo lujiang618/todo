@@ -96,6 +96,48 @@ project/
 - **每日 00:00**: 自动生成当天的 TODO 条目
 - **每月 1 号 00:00**: 自动归档上月数据
 
+## Docker 部署
+
+### 方式一：Docker Compose（推荐）
+
+```bash
+# 构建并启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 重启服务
+docker-compose restart
+```
+
+数据通过 Docker volume 持久化，即使容器删除数据也不会丢失。
+
+### 方式二：Docker 命令
+
+```bash
+# 构建镜像
+docker build -t todo-web .
+
+# 启动容器
+docker run -d \
+  --name todo-web \
+  -p 8210:8210 \
+  -v $(pwd)/data:/app/data \
+  -e NODE_ENV=production \
+  todo-web
+```
+
+### 环境变量
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| PORT | 服务端口 | 8210 |
+| NODE_ENV | 运行环境 | production |
+
 ## 技术栈
 
 - 后端：Node.js + Express

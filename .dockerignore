@@ -1,0 +1,49 @@
+# 依赖
+node_modules/
+npm-debug.log
+
+# 构建产物
+dist/
+build/
+
+# 测试
+test/
+tests/
+*.test.js
+*.spec.js
+
+# 文档
+*.md
+docs/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Docker 文件
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Task Master
+.taskmaster/
+
+# 临时文件
+tmp/
+temp/
+.cache/
+
+# 日志
+logs/
+*.log
