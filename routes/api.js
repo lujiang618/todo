@@ -250,6 +250,18 @@ router.get('/archives/:year/:month', (req, res) => {
       groupedResult[groupedResult.length - 1].todos.push(todoData);
     }
 
+    // 添加空分类（没有 TODO 的分类也要保留）
+    for (const category of monthCategories) {
+      if (!categoryMap.has(category.id)) {
+        groupedResult.push({
+          category_id: category.id,
+          category_name: category.name,
+          archived: category.archived,
+          todos: []
+        });
+      }
+    }
+
     res.json({ success: true, data: groupedResult });
 
   } catch (error) {
