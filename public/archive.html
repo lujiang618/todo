@@ -140,7 +140,7 @@
 
         groups.forEach(group => {
           const { category_id, category_name, archived, todos } = group;
-          if (!todos || todos.length === 0) return;
+          const todoCount = todos ? todos.length : 0;
 
           const dateEl = document.createElement('div');
           dateEl.className = 'archive-date-group';
@@ -149,7 +149,7 @@
           dateHeader.className = 'archive-date-header';
           dateHeader.innerHTML = `
             <div class="archive-date-header-left">
-              <strong>${category_name}</strong> <span>(${todos.length}条)</span>
+              <strong>${category_name}</strong> <span>(${todoCount}条)</span>
             </div>
             <button class="btn-delete-archive" data-category-id="${category_id}" data-category-name="${category_name}" title="删除归档分类">🗑️</button>
           `;
@@ -160,48 +160,51 @@
             deleteArchiveCategory(category_id, category_name);
           });
 
-          const childrenList = document.createElement('div');
-          childrenList.className = 'children-list';
+          // 如果有 TODO，渲染子条目列表
+          if (todoCount > 0) {
+            const childrenList = document.createElement('div');
+            childrenList.className = 'children-list';
 
-          // 构建父子关系
-          const rootTodos = todos.filter(t => !t.parent_id);
-          const childrenMap = {};
-          todos.filter(t => t.parent_id).forEach(t => {
-            if (!childrenMap[t.parent_id]) childrenMap[t.parent_id] = [];
-            childrenMap[t.parent_id].push(t);
-          });
+            // 构建父子关系
+            const rootTodos = todos.filter(t => !t.parent_id);
+            const childrenMap = {};
+            todos.filter(t => t.parent_id).forEach(t => {
+              if (!childrenMap[t.parent_id]) childrenMap[t.parent_id] = [];
+              childrenMap[t.parent_id].push(t);
+            });
 
-          // 渲染根条目和子条目
-          rootTodos.forEach(todo => {
-            const todoEl = document.createElement('div');
-            todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-            todoEl.innerHTML = `
-              <div class="todo-row">
-                <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
-                <span class="todo-title">${todo.title}</span>
-              </div>
-            `;
-            childrenList.appendChild(todoEl);
+            // 渲染根条目和子条目
+            rootTodos.forEach(todo => {
+              const todoEl = document.createElement('div');
+              todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+              todoEl.innerHTML = `
+                <div class="todo-row">
+                  <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
+                  <span class="todo-title">${todo.title}</span>
+                </div>
+              `;
+              childrenList.appendChild(todoEl);
 
-            // 渲染子条目
-            const childTodos = childrenMap[todo.id] || [];
-            if (childTodos.length > 0) {
-              childTodos.forEach(child => {
-                const childEl = document.createElement('div');
-                childEl.className = `todo-child ${child.completed ? 'completed' : ''}`;
-                childEl.style.marginLeft = '30px';
-                childEl.innerHTML = `
-                  <div class="todo-row">
-                    <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
-                    <span class="todo-title">${child.title}</span>
-                  </div>
-                `;
-                childrenList.appendChild(childEl);
-              });
-            }
-          });
+              // 渲染子条目
+              const childTodos = childrenMap[todo.id] || [];
+              if (childTodos.length > 0) {
+                childTodos.forEach(child => {
+                  const childEl = document.createElement('div');
+                  childEl.className = `todo-child ${child.completed ? 'completed' : ''}`;
+                  childEl.style.marginLeft = '30px';
+                  childEl.innerHTML = `
+                    <div class="todo-row">
+                      <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
+                      <span class="todo-title">${child.title}</span>
+                    </div>
+                  `;
+                  childrenList.appendChild(childEl);
+                });
+              }
+            });
 
-          dateEl.appendChild(childrenList);
+            dateEl.appendChild(childrenList);
+          }
           archiveList.appendChild(dateEl);
         });
 

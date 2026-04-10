@@ -171,7 +171,7 @@ router.get('/archives/:year/:month', (req, res) => {
     const categories = todoDao.getAllCategories(true);
 
     // 过滤出该月份的分类（从分类名称中提取日期）
-    const monthCategories = categories.filter(cat => {
+    let monthCategories = categories.filter(cat => {
       const dateMatch = cat.name.match(/(\d{4})-(\d{2})/);
       if (dateMatch) {
         return `${dateMatch[1]}-${dateMatch[2]}` === targetMonth;
@@ -179,26 +179,23 @@ router.get('/archives/:year/:month', (req, res) => {
       return false;
     });
 
+    // 按分类名称降序排序（日期晚的在前）
+    monthCategories.sort((a, b) => b.name.localeCompare(a.name));
+
     if (monthCategories.length === 0) {
       return res.status(404).json({ success: false, error: '该月份暂无归档数据' });
     }
 
-    // 获取这些分类下的所有 TODO
+    // 获取这些分类下的所有 TODO（包括空分类）
     const result = [];
     for (const category of monthCategories) {
       const todos = todoDao.getByCategory(category.id);
-      if (todos.length > 0) {
-        result.push({
-          category_id: category.id,
-          category_name: category.name,
-          archived: category.archived,
-          todos
-        });
-      }
-    }
-
-    if (result.length === 0) {
-      return res.status(404).json({ success: false, error: '该月份暂无归档数据' });
+      result.push({
+        category_id: category.id,
+        category_name: category.name,
+        archived: category.archived,
+        todos: todos || []
+      });
     }
 
     res.json({ success: true, data: result });
