@@ -447,6 +447,12 @@ mark {
   margin-left: 30px;
 }
 
+/* 历史记录页面中的 children-list */
+#archiveList .children-list {
+  margin: 0;
+  padding: 2px 0 0 35px;
+}
+
 /* 日期条目特殊样式 */
 .todo-item.is-date {
   background: #fff;

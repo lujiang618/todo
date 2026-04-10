@@ -170,9 +170,6 @@
 
           // 如果有 TODO，渲染子条目列表
           if (todoCount > 0) {
-            const childrenList = document.createElement('ul');
-            childrenList.className = 'children-list';
-
             // 构建父子关系
             const rootTodos = todos.filter(t => !t.parent_id);
             const childrenMap = {};
@@ -181,10 +178,8 @@
               childrenMap[t.parent_id].push(t);
             });
 
-            // 渲染根条目和子条目
+            // 渲染根条目
             rootTodos.forEach(todo => {
-              const todoLi = document.createElement('li');
-
               const todoEl = document.createElement('div');
               todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
               todoEl.innerHTML = `
@@ -193,14 +188,14 @@
                   <span class="todo-title">${todo.title}</span>
                 </div>
               `;
-              todoLi.appendChild(todoEl);
+              archiveList.appendChild(todoEl);
 
               // 渲染子条目
               const childTodos = childrenMap[todo.id] || [];
               if (childTodos.length > 0) {
+                const childContainer = document.createElement('div');
+                childContainer.className = 'children-list';
                 childTodos.forEach(child => {
-                  const childLi = document.createElement('li');
-
                   const childEl = document.createElement('div');
                   childEl.className = `todo-item todo-child ${child.completed ? 'completed' : ''}`;
                   childEl.innerHTML = `
@@ -209,15 +204,11 @@
                       <span class="todo-title">${child.title}</span>
                     </div>
                   `;
-                  childLi.appendChild(childEl);
-                  childrenList.appendChild(childLi);
+                  childContainer.appendChild(childEl);
                 });
+                archiveList.appendChild(childContainer);
               }
-
-              childrenList.appendChild(todoLi);
             });
-
-            dateEl.appendChild(childrenList);
           }
           archiveList.appendChild(dateEl);
         });
