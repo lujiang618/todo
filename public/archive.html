@@ -181,34 +181,31 @@
               childrenMap[t.parent_id].push(t);
             });
 
-            // 渲染根条目和子条目
-            rootTodos.forEach(todo => {
+            // 渲染根条目和子条目（支持递归）
+            function renderTodoWithChildren(todo, container, level = 0) {
               const todoEl = document.createElement('div');
               todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+              if (level > 0) {
+                todoEl.classList.add('todo-child');
+                todoEl.style.marginLeft = (30 * level) + 'px';
+              }
               todoEl.innerHTML = `
                 <div class="todo-row">
                   <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''} disabled>
                   <span class="todo-title">${todo.title}</span>
                 </div>
               `;
-              todoContainer.appendChild(todoEl);
+              container.appendChild(todoEl);
 
               // 渲染子条目
               const childTodos = childrenMap[todo.id] || [];
-              if (childTodos.length > 0) {
-                childTodos.forEach(child => {
-                  const childEl = document.createElement('div');
-                  childEl.className = `todo-item todo-child ${child.completed ? 'completed' : ''}`;
-                  childEl.style.marginLeft = '30px';
-                  childEl.innerHTML = `
-                    <div class="todo-row">
-                      <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
-                      <span class="todo-title">${child.title}</span>
-                    </div>
-                  `;
-                  todoContainer.appendChild(childEl);
-                });
-              }
+              childTodos.forEach(child => {
+                renderTodoWithChildren(child, container, level + 1);
+              });
+            }
+
+            rootTodos.forEach(todo => {
+              renderTodoWithChildren(todo, todoContainer, 0);
             });
 
             dateEl.appendChild(todoContainer);
