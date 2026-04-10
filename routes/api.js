@@ -181,14 +181,14 @@ router.get('/archives/:year/:month', (req, res) => {
     const { year, month } = req.params;
     const targetMonth = `${year}-${month}`; // 如：2026-04
 
-    // 获取所有已归档的分类（包括未归档的）
+    // 获取所有分类（包括已归档和未归档的）
     const categories = todoDao.getAllCategories(true);
 
-    // 过滤出该月份的分类（从分类名称中提取日期）
+    // 过滤出该月份且已归档的分类（archived=1）
     let monthCategories = categories.filter(cat => {
       const dateMatch = cat.name.match(/(\d{4})-(\d{2})/);
       if (dateMatch) {
-        return `${dateMatch[1]}-${dateMatch[2]}` === targetMonth;
+        return `${dateMatch[1]}-${dateMatch[2]}` === targetMonth && cat.archived === 1;
       }
       return false;
     });
