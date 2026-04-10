@@ -170,7 +170,7 @@
 
           // 如果有 TODO，渲染子条目列表
           if (todoCount > 0) {
-            const childrenList = document.createElement('div');
+            const childrenList = document.createElement('ul');
             childrenList.className = 'children-list';
 
             // 构建父子关系
@@ -183,6 +183,8 @@
 
             // 渲染根条目和子条目
             rootTodos.forEach(todo => {
+              const todoLi = document.createElement('li');
+
               const todoEl = document.createElement('div');
               todoEl.className = `todo-item ${todo.completed ? 'completed' : ''}`;
               todoEl.innerHTML = `
@@ -191,27 +193,28 @@
                   <span class="todo-title">${todo.title}</span>
                 </div>
               `;
-              const todoLi = document.createElement('li');
               todoLi.appendChild(todoEl);
-              childrenList.appendChild(todoLi);
 
               // 渲染子条目
               const childTodos = childrenMap[todo.id] || [];
               if (childTodos.length > 0) {
                 childTodos.forEach(child => {
+                  const childLi = document.createElement('li');
+
                   const childEl = document.createElement('div');
-                  childEl.className = `todo-child ${child.completed ? 'completed' : ''}`;
+                  childEl.className = `todo-item todo-child ${child.completed ? 'completed' : ''}`;
                   childEl.innerHTML = `
                     <div class="todo-row">
                       <input type="checkbox" class="todo-checkbox" ${child.completed ? 'checked' : ''} disabled>
                       <span class="todo-title">${child.title}</span>
                     </div>
                   `;
-                  const childLi = document.createElement('li');
                   childLi.appendChild(childEl);
                   childrenList.appendChild(childLi);
                 });
               }
+
+              childrenList.appendChild(todoLi);
             });
 
             dateEl.appendChild(childrenList);
