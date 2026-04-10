@@ -212,7 +212,45 @@ router.get('/archives/:year/:month', (req, res) => {
       });
     }
 
-    res.json({ success: true, data: result });
+    // 限制总记录数为最新的 31 条
+    const flattened = [];
+    for (const group of result) {
+      const { category_id, category_name, archived, todos } = group;
+      // 按 created_at 倒序排序，获取最新的
+      const sortedTodos = [...todos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      for (const todo of sortedTodos) {
+        flattened.push({
+          category_id,
+          category_name,
+          archived,
+          ...todo
+        });
+      }
+    }
+
+    // 按创建时间倒序排序，取最新的 31 条
+    flattened.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const latest31 = flattened.slice(0, 31);
+
+    // 重新按分类分组
+    const groupedResult = [];
+    const categoryMap = new Map();
+    for (const item of latest31) {
+      if (!categoryMap.has(item.category_id)) {
+        categoryMap.set(item.category_id, {
+          category_id: item.category_id,
+          category_name: item.category_name,
+          archived: item.archived,
+          todos: []
+        });
+        groupedResult.push(categoryMap.get(item.category_id));
+      }
+      // 恢复原始结构（去掉 created_at 排序字段）
+      const { category_id: cid, category_name: cn, archived: ar, ...todoData } = item;
+      groupedResult[groupedResult.length - 1].todos.push(todoData);
+    }
+
+    res.json({ success: true, data: groupedResult });
 
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
