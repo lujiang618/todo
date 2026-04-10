@@ -97,6 +97,15 @@ const todoDao = {
   // 创建 TODO
   create(todo) {
     const { title, description, parent_id, category_id = 1, date, sort_order = 0 } = todo;
+
+    // 检查 parent_id 是否有效（不能指向自己）
+    if (parent_id) {
+      const parent = this.getById(parent_id);
+      if (!parent) {
+        throw new Error('Parent TODO does not exist');
+      }
+    }
+
     const stmt = db.prepare(`
       INSERT INTO todos (title, description, parent_id, category_id, date, sort_order)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -145,6 +154,28 @@ const todoDao = {
     return stmt.all(parentId);
   },
 
+  // 检查是否会形成循环引用（检测 newParentId 是否是 id 的后代）
+  wouldCreateCycle(id, newParentId) {
+    if (!newParentId) return false; // parent_id 为 NULL 不会形成循环
+    if (id === newParentId) return true; // 不能将自己设为父级
+
+    // 从 newParentId 开始，向上追溯它的祖先链，看是否会遇到 id
+    // 如果 newParentId 的祖先包含 id，说明 id 是 newParentId 的后代，形成循环
+    const checkAncestors = (currentId, depth = 0) => {
+      if (depth > 100) return true; // 防止无限递归
+      if (currentId === id) return true; // 找到循环：newParentId 的祖先是 id
+
+      // 获取当前条目的父级
+      const stmt = db.prepare('SELECT parent_id FROM todos WHERE id = ?');
+      const row = stmt.get(currentId);
+      if (!row || !row.parent_id) return false; // 没有父级了
+
+      return checkAncestors(row.parent_id, depth + 1);
+    };
+
+    return checkAncestors(newParentId);
+  },
+
   // 更新 TODO
   update(id, updates) {
     const allowedFields = ['title', 'description', 'completed', 'parent_id', 'category_id', 'date', 'sort_order'];
@@ -160,6 +191,13 @@ const todoDao = {
 
     if (fields.length === 0) return this.getById(id);
 
+    // 检查是否会形成循环引用
+    if (updates.parent_id !== undefined) {
+      if (this.wouldCreateCycle(id, updates.parent_id)) {
+        throw new Error('Cannot set parent_id: would create circular reference');
+      }
+    }
+
     fields.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);
 
@@ -170,11 +208,30 @@ const todoDao = {
 
     // 如果更新了 category_id，级联更新所有子条目的 category_id
     if (updates.category_id !== undefined) {
-      const updateChildren = db.prepare(`
-        UPDATE todos SET category_id = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE parent_id = ?
-      `);
-      updateChildren.run(updates.category_id, id);
+      // 递归获取所有子孙条目 ID
+      const getAllDescendants = (parentId) => {
+        const stmt = db.prepare('SELECT id FROM todos WHERE parent_id = ?');
+        const children = stmt.all(parentId);
+        const descendants = [...children];
+        for (const child of children) {
+          descendants.push(...getAllDescendants(child.id));
+        }
+        return descendants;
+      };
+
+      const descendants = getAllDescendants(id);
+      if (descendants.length > 0) {
+        const updateChildren = db.prepare(`
+          UPDATE todos SET category_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `);
+        const updateMany = db.transaction((descendants) => {
+          for (const descendant of descendants) {
+            updateChildren.run(updates.category_id, descendant.id);
+          }
+        });
+        updateMany(descendants);
+      }
     }
 
     return this.getById(id);

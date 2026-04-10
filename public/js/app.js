@@ -8,6 +8,22 @@ let searchQuery = '';       // 搜索关键词
 // 默认分类 ID（Pool）
 const DEFAULT_CATEGORY_ID = 1;
 
+// ==================== 辅助函数 ====================
+// 递归获取所有子条目 ID
+function getAllChildIds(parentId, todos) {
+  const childIds = [];
+  const children = todos.filter(t => t.parent_id === parentId);
+
+  children.forEach(child => {
+    childIds.push(child.id);
+    // 递归获取子条目的子条目
+    const grandchildren = getAllChildIds(child.id, todos);
+    childIds.push(...grandchildren);
+  });
+
+  return childIds;
+}
+
 // ==================== 展开/收起状态管理 ====================
 // 从 localStorage 获取收起的分类 ID 列表
 function getCollapsedCategories() {
@@ -346,7 +362,7 @@ function createCategoryElement(category, searchTerm = '') {
   });
 
   rootTodos.forEach(todo => {
-    const itemEl = createTodoElement(todo, childrenMap[todo.id] || [], false);
+    const itemEl = createTodoElement(todo, childrenMap[todo.id] || [], false, childrenMap);
     todoList.appendChild(itemEl);
   });
 
@@ -388,7 +404,7 @@ function renderPoolList(container) {
   }
 
   rootTodos.forEach(todo => {
-    const itemEl = createTodoElement(todo, childrenMap[todo.id] || [], true);
+    const itemEl = createTodoElement(todo, childrenMap[todo.id] || [], true, childrenMap);
     container.appendChild(itemEl);
   });
 
@@ -399,7 +415,7 @@ function renderPoolList(container) {
 }
 
 // 创建 TODO 元素
-function createTodoElement(todo, children = [], isPool = false) {
+function createTodoElement(todo, children = [], isPool = false, childrenMap = {}) {
   const template = document.getElementById('todoItemTemplate');
   const clone = template.content.cloneNode(true);
   const itemEl = clone.querySelector('.todo-item');
@@ -418,15 +434,38 @@ function createTodoElement(todo, children = [], isPool = false) {
   checkbox.checked = todo.completed ? 1 : 0;
   if (todo.completed) itemEl.classList.add('completed');
 
-  // 复选框事件
+  // 复选框事件（勾选时同步更新所有子条目）
   checkbox.addEventListener('change', async () => {
-    await api.updateTodo(todo.id, { completed: checkbox.checked ? 1 : 0 });
-    itemEl.classList.toggle('completed', checkbox.checked);
-    // 更新本地状态
+    const newStatus = checkbox.checked ? 1 : 0;
+
+    // 更新当前条目
+    await api.updateTodo(todo.id, { completed: newStatus });
+    itemEl.classList.toggle('completed', newStatus);
+
+    // 获取所有子条目 ID 并批量更新
     const cat = categoryTodos[todo.category_id];
     if (cat) {
+      // 更新本地状态
       const t = cat.find(x => x.id === todo.id);
-      if (t) t.completed = checkbox.checked ? 1 : 0;
+      if (t) t.completed = newStatus;
+
+      // 递归获取所有子条目 ID
+      const childIds = getAllChildIds(todo.id, cat);
+
+      // 批量更新子条目状态
+      for (const childId of childIds) {
+        await api.updateTodo(childId, { completed: newStatus });
+        // 更新 DOM
+        const childEl = document.querySelector(`[data-id="${childId}"]`);
+        if (childEl) {
+          childEl.classList.toggle('completed', newStatus);
+          const childCheckbox = childEl.querySelector('.todo-checkbox');
+          if (childCheckbox) childCheckbox.checked = newStatus;
+        }
+        // 更新本地状态
+        const childTodo = cat.find(x => x.id === childId);
+        if (childTodo) childTodo.completed = newStatus;
+      }
     }
   });
 
@@ -457,7 +496,7 @@ function createTodoElement(todo, children = [], isPool = false) {
   // 渲染子条目
   if (children.length > 0) {
     children.forEach(child => {
-      const childEl = createChildElement(child);
+      const childEl = createChildElement(child, childrenMap[child.id] || []);
       const li = document.createElement('li');
       li.appendChild(childEl);
       childrenList.appendChild(li);
@@ -470,12 +509,13 @@ function createTodoElement(todo, children = [], isPool = false) {
 }
 
 // 创建子条目元素
-function createChildElement(todo) {
+function createChildElement(todo, children = []) {
   const template = document.getElementById('childItemTemplate');
   const clone = template.content.cloneNode(true);
   const itemEl = clone.querySelector('.todo-child');
 
   itemEl.dataset.id = todo.id;
+  itemEl.dataset.categoryId = todo.category_id;
   if (todo.completed) itemEl.classList.add('completed');
 
   const checkbox = itemEl.querySelector('.todo-checkbox');
@@ -483,20 +523,46 @@ function createChildElement(todo) {
   const addChildBtn = itemEl.querySelector('.btn-add-child');
   const editBtn = itemEl.querySelector('.btn-edit');
   const deleteBtn = itemEl.querySelector('.btn-delete');
+  const childrenList = itemEl.querySelector('.children-list');
 
   checkbox.checked = todo.completed ? 1 : 0;
   titleEl.textContent = todo.title;
 
-  // 复选框事件
+  // 复选框事件（勾选时同步更新所有子条目）
   checkbox.addEventListener('change', async () => {
-    await api.updateTodo(todo.id, { completed: checkbox.checked ? 1 : 0 });
-    itemEl.classList.toggle('completed', checkbox.checked);
+    const newStatus = checkbox.checked ? 1 : 0;
+
+    // 更新当前条目
+    await api.updateTodo(todo.id, { completed: newStatus });
+    itemEl.classList.toggle('completed', newStatus);
+
+    // 获取所有子条目 ID 并批量更新
+    const cat = categoryTodos[todo.category_id];
+    if (cat) {
+      // 递归获取所有子条目 ID
+      const childIds = getAllChildIds(todo.id, cat);
+
+      // 批量更新子条目状态
+      for (const childId of childIds) {
+        await api.updateTodo(childId, { completed: newStatus });
+        // 更新 DOM
+        const childEl = document.querySelector(`[data-id="${childId}"]`);
+        if (childEl) {
+          childEl.classList.toggle('completed', newStatus);
+          const childCheckbox = childEl.querySelector('.todo-checkbox');
+          if (childCheckbox) childCheckbox.checked = newStatus;
+        }
+        // 更新本地状态
+        const childTodo = cat.find(x => x.id === childId);
+        if (childTodo) childTodo.completed = newStatus;
+      }
+    }
   });
 
-  // 添加子条目按钮（暂不支持三级嵌套）
-  // addChildBtn.addEventListener('click', () => {
-  //   showAddChildForm(todo.id);
-  // });
+  // 添加子条目按钮（支持三级嵌套）
+  addChildBtn.addEventListener('click', () => {
+    showAddChildForm(todo.id, todo.category_id);
+  });
 
   // 编辑按钮
   editBtn.addEventListener('click', () => {
@@ -510,6 +576,18 @@ function createChildElement(todo) {
       loadAllData();
     }
   });
+
+  // 渲染子条目（三级）
+  if (children.length > 0) {
+    children.forEach(child => {
+      const childEl = createChildElement(child);
+      const li = document.createElement('li');
+      li.appendChild(childEl);
+      childrenList.appendChild(li);
+    });
+  } else {
+    childrenList.style.display = 'none';
+  }
 
   // 子条目也支持拖拽
   itemEl.setAttribute('draggable', true);
@@ -538,63 +616,26 @@ function setupTodoDragAndDrop(itemEl, todo) {
     });
   });
 
-  // 允许条目接收拖放（变成子条目）
-  itemEl.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    if (draggedItem && draggedItem.type === 'todo' && draggedItem.todo.id !== todo.id) {
-      // 不能拖到自己身上，也不能拖到自己的子条目上
-      if (!isDescendantOf(draggedItem.todo, todo.id)) {
-        itemEl.classList.add('drag-over');
-      }
-    }
-  });
-
-  itemEl.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    if (draggedItem && draggedItem.type === 'todo' && draggedItem.todo.id !== todo.id) {
-      if (!isDescendantOf(draggedItem.todo, todo.id)) {
-        e.dataTransfer.dropEffect = 'move';
-      }
-    }
-  });
-
-  itemEl.addEventListener('dragleave', (e) => {
-    if (!itemEl.contains(e.relatedTarget)) {
-      itemEl.classList.remove('drag-over');
-    }
-  });
-
-  itemEl.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    itemEl.classList.remove('drag-over');
-
-    if (draggedItem && draggedItem.type === 'todo') {
-      const sourceTodo = draggedItem.todo;
-      const targetTodo = todo;
-
-      // 不能拖到自己身上
-      if (sourceTodo.id === targetTodo.id) return;
-
-      // 不能拖到自己的祖先节点上（会形成循环）
-      if (isDescendantOf(draggedItem.todo, todo.id)) return;
-
-      // 将源条目变成目标条目的子条目
-      await api.updateTodo(sourceTodo.id, {
-        parent_id: targetTodo.id,
-        category_id: targetTodo.category_id  // 子条目继承父条目的分类
-      });
-
-      loadAllData();
-    }
-  });
+  // 移除条目之间的拖放功能（不再支持将一个条目变成另一个条目的子条目）
+  // 只保留拖动到分类容器进行排序和移动分类的功能
 }
 
 // 设置 TODO 列表容器的拖拽接收（用于组内排序）
 function setupTodoListDropTarget(containerEl, categoryId) {
   containerEl.addEventListener('dragover', (e) => {
     e.preventDefault();
-    // 只在拖动 TODO 条目时阻止冒泡（组内排序）
-    // 如果拖动的是分类，让事件继续冒泡到父元素
+    // 检查拖动位置是否在 TODO 列表区域内（而不是分类头部）
+    // 分类头部的高度约为 40-50px，所以如果 y 坐标小于容器顶部 + 60，说明在头部附近
+    const todoListRect = containerEl.getBoundingClientRect();
+    const isNearHeader = e.clientY < todoListRect.top + 60;
+
+    // 如果在头部附近，不阻止冒泡，让头部元素处理
+    if (draggedItem && draggedItem.type === 'todo' && isNearHeader) {
+      // 不调用 stopPropagation，让事件冒泡到头部
+      return;
+    }
+
+    // 只在拖动 TODO 条目且在列表区域内时阻止冒泡（组内排序）
     if (draggedItem && draggedItem.type === 'todo') {
       e.stopPropagation();
     }
@@ -603,9 +644,27 @@ function setupTodoListDropTarget(containerEl, categoryId) {
   containerEl.addEventListener('drop', async (e) => {
     e.preventDefault();
 
-    // 只在拖动 TODO 条目且来自同一个分类时处理组内排序
+    // 只在拖动 TODO 条目时处理
     if (draggedItem && draggedItem.type === 'todo') {
       const sourceCategoryId = draggedItem.todo.category_id;
+      const sourceTodo = draggedItem.todo;
+
+      // 检查拖动位置是否在列表顶部（靠近头部）
+      const rect = containerEl.getBoundingClientRect();
+      const isNearTop = e.clientY < rect.top + 30;
+
+      // 如果是在列表顶部且拖动的是子条目（有 parent_id），则清空 parent_id 并移动到该分类
+      if (isNearTop && sourceTodo.parent_id) {
+        e.stopPropagation();
+
+        await api.updateTodo(sourceTodo.id, {
+          category_id: categoryId,
+          parent_id: null
+        });
+
+        loadAllData();
+        return;
+      }
 
       // 如果是跨分类拖动，让事件冒泡到分类容器处理
       if (sourceCategoryId !== categoryId) {
@@ -685,7 +744,90 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
     });
   });
 
-  // 接收 TODO 条目拖放
+  // 分类头部接收 TODO 条目拖放（将条目放入该分类）
+  headerEl.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedItem && draggedItem.type === 'todo') {
+      headerEl.classList.add('drag-over-target');
+    }
+  });
+
+  headerEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedItem && draggedItem.type === 'todo') {
+      e.dataTransfer.dropEffect = 'move';
+    } else if (draggedItem && draggedItem.type === 'category') {
+      // 分类之间的拖拽：显示插入位置指示
+      const rect = containerEl.getBoundingClientRect();
+      const offset = e.clientY - rect.top;
+      if (offset > rect.height / 2) {
+        containerEl.style.borderBottom = '3px solid #3498db';
+        containerEl.style.borderTop = '';
+      } else {
+        containerEl.style.borderTop = '3px solid #3498db';
+        containerEl.style.borderBottom = '';
+      }
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+
+  headerEl.addEventListener('dragleave', (e) => {
+    if (!headerEl.contains(e.relatedTarget)) {
+      headerEl.classList.remove('drag-over-target');
+    }
+  });
+
+  headerEl.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    headerEl.classList.remove('drag-over-target');
+
+    if (!draggedItem) return;
+
+    // 处理 TODO 条目拖放到分类头部（将条目放入该分类）
+    if (draggedItem.type === 'todo') {
+      const sourceTodo = draggedItem.todo;
+      const targetCategoryId = category.id;
+
+      // 更新条目的分类，并清除父级关联（作为分类的根条目）
+      await api.updateTodo(sourceTodo.id, {
+        category_id: targetCategoryId,
+        parent_id: null
+      });
+
+      loadAllData();
+      return;
+    }
+
+    // 处理分类之间的拖拽排序
+    if (draggedItem.type === 'category') {
+      const sourceCategory = draggedItem.category;
+      const targetCategory = category;
+
+      if (sourceCategory.id === targetCategory.id) return;
+
+      const sourceIndex = allCategories.findIndex(c => c.id === sourceCategory.id);
+      const targetIndex = allCategories.findIndex(c => c.id === targetCategory.id);
+
+      // 确定插入位置（根据鼠标位置判断是插入到前面还是后面）
+      const rect = containerEl.getBoundingClientRect();
+      const offset = e.clientY - rect.top;
+      const insertAfter = offset > rect.height / 2;
+
+      // 从原位置移除
+      allCategories.splice(sourceIndex, 1);
+      // 插入到新位置
+      allCategories.splice(insertAfter ? targetIndex : targetIndex - (sourceIndex < targetIndex ? 1 : 0), 0, sourceCategory);
+
+      // 更新后端排序
+      await updateCategoryOrder();
+      loadAllData();
+    }
+  });
+
+  // 容器接收分类之间的拖拽排序和 TODO 条目拖放
   containerEl.addEventListener('dragenter', (e) => {
     e.preventDefault();
     if (draggedItem && draggedItem.type === 'category') {
@@ -707,6 +849,9 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
         containerEl.style.borderBottom = '';
       }
       e.dataTransfer.dropEffect = 'move';
+    } else if (draggedItem && draggedItem.type === 'todo') {
+      // TODO 条目拖放：显示整体高亮
+      containerEl.classList.add('drag-over');
     }
   });
 
@@ -753,15 +898,15 @@ function setupCategoryDropTarget(containerEl, category, headerEl) {
       return;
     }
 
-    // 处理 TODO 条目拖放到分类
-    if (draggedItem.type !== 'category') {
+    // 处理 TODO 条目拖放到分类容器（将条目放入该分类）
+    if (draggedItem.type === 'todo') {
       const sourceTodo = draggedItem.todo;
-      const targetCategoryId = parseInt(containerEl.dataset.categoryId);
+      const targetCategoryId = category.id;
 
-      // 更新条目的分类
+      // 更新条目的分类，并清除父级关联（作为分类的根条目）
       await api.updateTodo(sourceTodo.id, {
         category_id: targetCategoryId,
-        parent_id: null  // 清除父级关联，作为分类的根条目
+        parent_id: null
       });
 
       loadAllData();
@@ -817,21 +962,6 @@ function highlightMatch(text, searchTerm) {
 // 转义正则表达式特殊字符
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// 检查 todo 是否是 targetParentId 的后代（直接子或间接子）
-function isDescendantOf(todo, targetParentId) {
-  let currentParentId = todo.parent_id;
-  while (currentParentId != null) {
-    if (currentParentId === targetParentId) {
-      return true;
-    }
-    // 找到父条目
-    const parent = findTodoById(currentParentId);
-    if (!parent) break;
-    currentParentId = parent.parent_id;
-  }
-  return false;
 }
 
 // 根据 ID 查找 todo
@@ -950,12 +1080,88 @@ function showAddCategoryForm() {
   };
 }
 
-// 显示编辑表单
+// 显示编辑表单（显示 ID 和允许设置 parent_id）
 function showEditForm(id, currentTitle) {
-  showModal('修改条目', currentTitle, async (value) => {
-    await api.updateTodo(id, { title: value });
-    loadAllData();
-  });
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalInput = document.getElementById('modalInput');
+  const btnClose = document.getElementById('btnClose');
+  const btnCancel = document.getElementById('btnCancel');
+  const btnConfirm = document.getElementById('btnConfirm');
+  const modalBody = document.querySelector('.modal-body');
+
+  // 查找当前 TODO
+  let currentTodo = null;
+  for (const catId of Object.keys(categoryTodos)) {
+    const found = categoryTodos[catId].find(t => t.id === id);
+    if (found) {
+      currentTodo = found;
+      break;
+    }
+  }
+
+  if (!currentTodo) {
+    alert('条目不存在');
+    return;
+  }
+
+  modalTitle.textContent = '修改条目';
+  modalInput.value = currentTitle || '';
+  modalInput.placeholder = '请输入标题';
+
+  // 构建 HTML
+  let extraHtml = `
+    <div style="margin-top: 15px; font-size: 14px; color: #666;">
+      <strong>ID:</strong> ${id}
+    </div>
+  `;
+
+  // 添加 parent_id 设置（文本框）
+  extraHtml += `
+    <div style="margin-top: 15px;">
+      <label style="display: block; font-size: 14px; margin-bottom: 8px;">父级条目 ID（留空表示无父级）:</label>
+      <input type="number" id="parentIdInput" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="输入父级条目 ID" value="${currentTodo.parent_id || ''}">
+    </div>
+  `;
+
+  modalBody.innerHTML = `
+    <input type="text" id="modalInput" class="modal-input" placeholder="请输入标题..." value="${(currentTitle || '').replace(/"/g, '&quot;')}">
+    ${extraHtml}
+  `;
+  const newModalInput = document.getElementById('modalInput');
+
+  modal.classList.add('show');
+  newModalInput.focus();
+
+  const closeModal = () => {
+    modal.classList.remove('show');
+  };
+
+  btnClose.onclick = closeModal;
+  btnCancel.onclick = closeModal;
+  btnConfirm.onclick = () => {
+    const value = newModalInput.value.trim();
+    const parentIdValue = document.getElementById('parentIdInput').value;
+    const newParentId = parentIdValue ? parseInt(parentIdValue) : null;
+
+    if (value) {
+      api.updateTodo(id, {
+        title: value,
+        parent_id: newParentId
+      }).then(() => {
+        loadAllData();
+      });
+    }
+    closeModal();
+  };
+
+  modalInput.onkeypress = (e) => {
+    if (e.key === 'Enter') btnConfirm.click();
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
 }
 
 // 添加子条目

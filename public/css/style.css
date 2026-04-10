@@ -247,6 +247,12 @@ mark {
   background: #d4edff;
 }
 
+/* 分类容器接收 TODO 条目拖动时也显示高亮 */
+.category-container.drag-over.todo-drag-over {
+  background: #e8f5e9;
+  border-color: #4caf50;
+}
+
 /* 分类收起状态 */
 .category-container.collapsed .todo-list {
   display: none;
@@ -271,6 +277,12 @@ mark {
 
 .category-header:active {
   cursor: grabbing;
+}
+
+/* 分类头部接收拖动时的样式 */
+.category-header.drag-over-target {
+  background: #d4edff;
+  border-bottom: 2px dashed #3498db;
 }
 
 /* 确保分类头部内的按钮不影响拖拽 */

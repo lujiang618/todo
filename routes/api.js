@@ -155,12 +155,36 @@ router.put('/todos/reorder', (req, res) => {
 // 更新 TODO
 router.put('/todos/:id', (req, res) => {
   try {
+    const { parent_id, category_id } = req.body;
+
+    // 提前检查循环引用，给出更友好的错误提示
+    if (parent_id !== undefined) {
+      const todo = todoDao.getById(req.params.id);
+      if (!todo) {
+        return res.status(404).json({ success: false, error: 'TODO not found' });
+      }
+
+      // 检查是否会形成循环引用
+      if (todoDao.wouldCreateCycle(req.params.id, parent_id)) {
+        return res.status(400).json({
+          success: false,
+          error: '不能将条目设置为自己的后代作为父级（会形成循环引用）'
+        });
+      }
+    }
+
     const todo = todoDao.update(req.params.id, req.body);
     if (!todo) {
       return res.status(404).json({ success: false, error: 'TODO not found' });
     }
     res.json({ success: true, data: todo });
   } catch (error) {
+    if (error.message.includes('circular reference')) {
+      return res.status(400).json({
+        success: false,
+        error: '不能设置父级：会形成循环引用'
+      });
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 });
