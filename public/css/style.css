@@ -690,6 +690,28 @@ mark {
   font-size: 0.9rem;
 }
 
+.archive-date-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-unarchive {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0.5;
+}
+
+.btn-unarchive:hover {
+  background: #e8f5e9;
+  opacity: 1;
+}
+
 .btn-delete-archive {
   background: transparent;
   border: none;

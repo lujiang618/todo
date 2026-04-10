@@ -292,6 +292,17 @@ const todoDao = {
     return true;
   },
 
+  // 取消归档分类（将分类的 archived 标记设为 0）
+  unarchiveCategory(id) {
+    const category = this.getCategoryById(id);
+    if (!category) return false;
+
+    const updateCategory = db.prepare('UPDATE categories SET archived = 0 WHERE id = ?');
+    updateCategory.run(id);
+
+    return true;
+  },
+
   // 删除分类
   deleteCategory(id) {
     const stmt = db.prepare('DELETE FROM categories WHERE id = ?');

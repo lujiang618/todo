@@ -151,9 +151,17 @@
             <div class="archive-date-header-left">
               <strong>${category_name}</strong> <span>(${todoCount}条)</span>
             </div>
-            <button class="btn-delete-archive" data-category-id="${category_id}" data-category-name="${category_name}" title="删除归档分类">🗑️</button>
+            <div class="archive-date-header-actions">
+              <button class="btn-unarchive" data-category-id="${category_id}" data-category-name="${category_name}" title="取消归档">📥</button>
+              <button class="btn-delete-archive" data-category-id="${category_id}" data-category-name="${category_name}" title="删除归档分类">🗑️</button>
+            </div>
           `;
           dateEl.appendChild(dateHeader);
+
+          // 绑定取消归档按钮事件
+          dateHeader.querySelector('.btn-unarchive').addEventListener('click', () => {
+            unarchiveCategory(category_id, category_name);
+          });
 
           // 绑定删除按钮事件
           dateHeader.querySelector('.btn-delete-archive').addEventListener('click', () => {
@@ -248,6 +256,64 @@
 
     // 删除归档分类
     let deleteCallback = null;
+    let unarchiveCallback = null;
+
+    function showUnarchiveConfirm(categoryId, categoryName) {
+      const modal = document.getElementById('modal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalBody = document.querySelector('.modal-body');
+      const btnClose = document.getElementById('btnClose');
+      const btnCancel = document.getElementById('btnCancel');
+      const btnConfirm = document.getElementById('btnConfirm');
+
+      modalTitle.textContent = '取消归档确认';
+      modalBody.innerHTML = `
+        <p style="margin-bottom: 15px;">确定要取消归档分类 "<strong>${categoryName}</strong>" 吗？</p>
+        <p style="color: #27ae60;">该分类将重新出现在首页待办列表中。</p>
+      `;
+
+      modal.classList.add('show');
+
+      const closeModal = () => {
+        modal.classList.remove('show');
+        modalBody.innerHTML = '<input type="text" id="modalInput" class="modal-input" placeholder="请输入内容...">';
+        unarchiveCallback = null;
+      };
+
+      btnClose.onclick = closeModal;
+      btnCancel.onclick = closeModal;
+      btnConfirm.onclick = () => {
+        if (unarchiveCallback) unarchiveCallback();
+        closeModal();
+      };
+
+      modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+      };
+    }
+
+    // 取消归档分类
+    async function unarchiveCategory(categoryId, categoryName) {
+      unarchiveCallback = async () => {
+        try {
+          const res = await fetch(`/api/categories/${categoryId}/unarchive`, {
+            method: 'POST'
+          });
+          const data = await res.json();
+
+          if (data.success) {
+            // 重新加载当前月份的归档数据
+            loadArchive(yearSelect.value, monthSelect.value);
+          } else {
+            alert('取消归档失败：' + (data.error || '未知错误'));
+          }
+        } catch (error) {
+          alert('取消归档失败：' + error.message);
+        }
+      };
+
+      showUnarchiveConfirm(categoryId, categoryName);
+    }
 
     function showDeleteConfirm(categoryId, categoryName) {
       const modal = document.getElementById('modal');

@@ -46,6 +46,20 @@ router.post('/categories/:id/archive', (req, res) => {
   }
 });
 
+// 取消归档分类
+router.post('/categories/:id/unarchive', (req, res) => {
+  try {
+    const result = todoDao.unarchiveCategory(req.params.id);
+    if (result) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ success: false, error: 'Category not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // 更新分类顺序（必须在 /categories/:id 之前定义）
 router.put('/categories/reorder', (req, res) => {
   try {
